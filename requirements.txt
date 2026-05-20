@@ -1,0 +1,4 @@
+markitdown[docx]>=0.1.0
+customtkinter>=5.2.0
+tkinterdnd2>=0.4.0
+pywin32>=306; sys_platform == "win32"
