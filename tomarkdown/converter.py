@@ -151,6 +151,63 @@ def _convert_with_markitdown(src: Path) -> str:
         raise ConversionError(f"Failed to convert {src.name}: {exc}") from exc
 
 
+def _convert_docx(src: Path, dst: Path) -> str:
+    """
+    Convert .docx to markdown via mammoth, extracting embedded images to
+    ``{output_stem}_assets/`` instead of stripping them to broken placeholders.
+    """
+    import mammoth
+    from markitdown.converter_utils.docx.pre_process import pre_process_docx
+    from markitdown.converters._html_converter import HtmlConverter
+
+    assets_dir = dst.parent / f"{dst.stem}_assets"
+    if assets_dir.exists():
+        shutil.rmtree(assets_dir)
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    image_count = 0
+
+    def convert_image(image: object) -> dict[str, str]:
+        nonlocal image_count
+        image_count += 1
+        content_type = getattr(image, "content_type", None) or "image/png"
+        ext = content_type.rsplit("/", 1)[-1]
+        if ext == "jpeg":
+            ext = "jpg"
+        filename = f"image{image_count}.{ext}"
+        out_path = assets_dir / filename
+        open_image = getattr(image, "open", None)
+        if not callable(open_image):
+            raise ConversionError(f"Unsupported embedded image in {src.name}")
+        with open_image() as img_stream:
+            out_path.write_bytes(img_stream.read())
+        return {"src": f"{assets_dir.name}/{filename}"}
+
+    try:
+        with src.open("rb") as docx_file:
+            processed = pre_process_docx(docx_file)
+            html_result = mammoth.convert_to_html(
+                processed,
+                convert_image=mammoth.images.img_element(convert_image),
+            )
+    except ConversionError:
+        raise
+    except Exception as exc:
+        raise ConversionError(f"Failed to convert {src.name}: {exc}") from exc
+
+    html_converter = HtmlConverter()
+    md_result = html_converter.convert_string(html_result.value)
+    content = (md_result.markdown or md_result.text_content or "").strip()
+
+    if image_count == 0 and assets_dir.exists():
+        shutil.rmtree(assets_dir, ignore_errors=True)
+
+    if not content:
+        raise ConversionError("Conversion produced empty output")
+
+    return content
+
+
 def _convert(src: Path, dst: Path) -> None:
     """Convert a single .doc/.docx file to Markdown and write to dst."""
     src = Path(src)
@@ -174,7 +231,12 @@ def _convert(src: Path, dst: Path) -> None:
         if suffix == ".doc":
             convert_src, temp_dir = _convert_doc_to_docx(src)
 
-        content = _convert_with_markitdown(convert_src)
+        try:
+            content = _convert_docx(convert_src, dst)
+        except ConversionError:
+            raise
+        except Exception:
+            content = _convert_with_markitdown(convert_src)
     finally:
         if temp_dir is not None:
             shutil.rmtree(temp_dir, ignore_errors=True)

@@ -95,17 +95,33 @@ def test_convert_batch_with_callback(tmp_path: Path) -> None:
 
 
 def test_convert_empty_result_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Raise ConversionError when markitdown returns empty content."""
+    """Raise ConversionError when docx conversion returns empty content."""
 
-    class EmptyResult:
-        markdown = ""
-        text_content = ""
+    def fake_convert_docx(_src: Path, _dst: Path) -> str:
+        raise ConversionError("Conversion produced empty output")
 
-    class FakeMarkItDown:
-        def convert(self, _path: str) -> EmptyResult:
-            return EmptyResult()
-
-    monkeypatch.setattr("tomarkdown.converter.MarkItDown", FakeMarkItDown)
+    monkeypatch.setattr("tomarkdown.converter._convert_docx", fake_convert_docx)
 
     with pytest.raises(ConversionError, match="empty output"):
         convert_docx_to_md(SAMPLE_DOCX, tmp_path / "out.md")
+
+
+def test_convert_docx_extracts_images(tmp_path: Path) -> None:
+    """Embedded images are written to an assets folder with relative links."""
+    problem_docx = Path(
+        r"E:\W-公司资料\项目分析\2026-05-激光散热系统\激光散热系统需求-芯蚁修订_20260521.docx"
+    )
+    if not problem_docx.exists():
+        pytest.skip("sample problem docx not available on this machine")
+
+    dst = tmp_path / "laser.md"
+    convert_docx_to_md(problem_docx, dst)
+
+    content = dst.read_text(encoding="utf-8")
+    assets_dir = tmp_path / "laser_assets"
+
+    assert "激光散热系统需求" in content
+    assert assets_dir.is_dir()
+    assert len(list(assets_dir.glob("image*.*"))) >= 1
+    assert f"{assets_dir.name}/image1." in content
+    assert "base64..." not in content

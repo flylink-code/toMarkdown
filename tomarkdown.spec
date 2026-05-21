@@ -13,7 +13,16 @@ hiddenimports = [
     "tkinterdnd2",
 ]
 
-for package in ("customtkinter", "tkinterdnd2", "markitdown"):
+for package in (
+    "customtkinter",
+    "tkinterdnd2",
+    "markitdown",
+    "mammoth",
+    "markdownify",
+    "bs4",
+    "cobble",
+    "magika",
+):
     pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package)
     datas += pkg_datas
     binaries += pkg_binaries
