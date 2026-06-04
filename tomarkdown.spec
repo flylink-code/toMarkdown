@@ -22,6 +22,8 @@ for package in (
     "bs4",
     "cobble",
     "magika",
+    "pdfplumber",
+    "pdfminer",
 ):
     pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package)
     datas += pkg_datas

@@ -99,8 +99,8 @@ pyinstaller --noconfirm tomarkdown.spec
 Push a version tag to trigger CI release:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 ### Development
@@ -201,8 +201,8 @@ pyinstaller --noconfirm tomarkdown.spec
 推送版本标签即可触发 CI 自动发布：
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 ### 开发

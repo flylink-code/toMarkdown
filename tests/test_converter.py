@@ -15,20 +15,69 @@ from tomarkdown.converter import (
 )
 
 SAMPLE_DOCX = Path(__file__).parent / "sample.docx"
+SAMPLE_PDF = Path(__file__).parent / "sample.pdf"
 SAMPLE_TITLE = "Hello Markdown"
+SAMPLE_PDF_TEXT = "Hello PDF"
+
+
+def _write_sample_pdf(path: Path) -> None:
+    """Write a minimal text-based PDF for conversion tests."""
+    stream = "BT /F1 24 Tf 100 700 Td (Hello PDF) Tj ET"
+    objects = [
+        "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
+        "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
+        (
+            "3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R"
+            "/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj"
+        ),
+        "4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj",
+        f"5 0 obj<</Length {len(stream)}>>stream\n{stream}\nendstream endobj",
+    ]
+
+    body = ["%PDF-1.4"]
+    offsets = [0]
+    for obj in objects:
+        offsets.append(sum(len(part) + 1 for part in body))
+        body.append(obj)
+
+    xref_offset = sum(len(part) + 1 for part in body)
+    body.append("xref")
+    body.append(f"0 {len(objects) + 1}")
+    body.append("0000000000 65535 f ")
+    for offset in offsets[1:]:
+        body.append(f"{offset:010d} 00000 n ")
+    body.append("trailer<</Size 6/Root 1 0 R>>")
+    body.append(f"startxref\n{xref_offset}")
+    body.append("%%EOF")
+    path.write_text("\n".join(body), encoding="latin-1")
 
 
 @pytest.fixture(scope="module", autouse=True)
 def create_sample_docx() -> None:
-    """Create a sample .docx file for tests if it does not exist."""
-    if SAMPLE_DOCX.exists():
-        return
+    """Create sample input files for tests if they do not exist."""
+    if not SAMPLE_DOCX.exists():
+        doc = Document()
+        doc.add_heading(SAMPLE_TITLE, level=1)
+        doc.add_paragraph("This is a test paragraph for conversion.")
+        doc.add_paragraph("Second line with bold text.", style="Normal")
+        doc.save(SAMPLE_DOCX)
 
-    doc = Document()
-    doc.add_heading(SAMPLE_TITLE, level=1)
-    doc.add_paragraph("This is a test paragraph for conversion.")
-    doc.add_paragraph("Second line with bold text.", style="Normal")
-    doc.save(SAMPLE_DOCX)
+    if not SAMPLE_PDF.exists():
+        _write_sample_pdf(SAMPLE_PDF)
+
+
+def test_convert_pdf_to_md(tmp_path: Path) -> None:
+    """Given a text-based .pdf file, output a valid .md file."""
+    pytest.importorskip("pdfminer")
+    pytest.importorskip("pdfplumber")
+
+    dst = tmp_path / "output.md"
+    convert_docx_to_md(SAMPLE_PDF, dst)
+
+    assert dst.exists()
+    content = dst.read_text(encoding="utf-8")
+    assert content.strip()
+    assert SAMPLE_PDF_TEXT in content
 
 
 def test_convert_docx_to_md(tmp_path: Path) -> None:
@@ -77,6 +126,34 @@ def test_convert_file_returns_bool(tmp_path: Path) -> None:
 def test_convert_file_returns_false_on_missing(tmp_path: Path) -> None:
     """convert_file returns False when source is missing."""
     assert convert_file(tmp_path / "missing.docx", tmp_path / "out.md") is False
+
+
+def test_convert_batch_skips_nonempty_output(tmp_path: Path) -> None:
+    """Skip conversion when a non-empty output file already exists."""
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    existing = out_dir / "sample.md"
+    existing.write_text("existing content", encoding="utf-8")
+
+    result = convert_batch([SAMPLE_DOCX], out_dir, overwrite=False)
+
+    assert result["skipped_count"] == 1
+    assert result["success_count"] == 0
+    assert existing.read_text(encoding="utf-8") == "existing content"
+
+
+def test_convert_batch_reconverts_empty_output(tmp_path: Path) -> None:
+    """Re-convert when an existing output file is empty."""
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    existing = out_dir / "sample.md"
+    existing.write_text("", encoding="utf-8")
+
+    result = convert_batch([SAMPLE_DOCX], out_dir, overwrite=False)
+
+    assert result["skipped_count"] == 0
+    assert result["success_count"] == 1
+    assert existing.read_text(encoding="utf-8").strip()
 
 
 def test_convert_batch_with_callback(tmp_path: Path) -> None:

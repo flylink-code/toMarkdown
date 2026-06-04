@@ -15,7 +15,7 @@ import customtkinter as ctk
 from tomarkdown.converter import (
     collect_word_files,
     convert_batch,
-    is_supported_word_file,
+    is_supported_file,
 )
 
 try:
@@ -98,7 +98,7 @@ class ConverterApp(DnDCTk):
         ctk.set_appearance_mode("Dark")
         ctk.set_default_color_theme("blue")
 
-        self.title("Word → Markdown 转换器")
+        self.title("Word / PDF → Markdown 转换器")
         self.geometry("760x680")
         self.minsize(640, 560)
 
@@ -115,7 +115,7 @@ class ConverterApp(DnDCTk):
 
         ctk.CTkLabel(
             header,
-            text="Word → Markdown 转换器",
+            text="Word / PDF → Markdown 转换器",
             font=ctk.CTkFont(size=20, weight="bold"),
         ).grid(row=0, column=0, sticky="w")
 
@@ -131,9 +131,9 @@ class ConverterApp(DnDCTk):
         self.input_frame.grid(row=1, column=0, sticky="ew", padx=16, pady=8)
         self.input_frame.grid_columnconfigure(0, weight=1)
 
-        input_hint = "输入文件（支持 .doc / .docx，可拖放文件或文件夹到此处）"
+        input_hint = "输入文件（支持 .doc / .docx / .pdf，可拖放文件或文件夹到此处）"
         if not DND_AVAILABLE:
-            input_hint = "输入文件（支持 .doc / .docx）"
+            input_hint = "输入文件（支持 .doc / .docx / .pdf）"
 
         ctk.CTkLabel(self.input_frame, text=input_hint, anchor="w").grid(
             row=0, column=0, sticky="w", padx=12, pady=(12, 4)
@@ -263,7 +263,7 @@ class ConverterApp(DnDCTk):
 
         items = self._paths_to_file_items(parse_drop_paths(event.data))
         if not items:
-            messagebox.showinfo("提示", "未检测到有效的 .doc / .docx 文件。")
+            messagebox.showinfo("提示", "未检测到有效的 .doc / .docx / .pdf 文件。")
             return
 
         self._add_file_items(items)
@@ -275,7 +275,7 @@ class ConverterApp(DnDCTk):
             if path.is_dir():
                 word_files = collect_word_files(path, recursive=self.recursive_var.get())
                 items.extend(FileItem(src=src, root=path) for src in word_files)
-            elif is_supported_word_file(path):
+            elif is_supported_file(path):
                 items.append(FileItem(src=path))
         return items
 
@@ -327,20 +327,20 @@ class ConverterApp(DnDCTk):
 
     def _add_files(self) -> None:
         paths = filedialog.askopenfilenames(
-            title="选择 Word 文件",
+            title="选择文件",
             filetypes=[
+                ("支持的文档", "*.doc;*.docx;*.pdf"),
                 ("Word 文档", "*.doc;*.docx"),
-                ("Word 97-2003", "*.doc"),
-                ("Word 2007+", "*.docx"),
+                ("PDF 文档", "*.pdf"),
                 ("所有文件", "*.*"),
             ],
         )
         if not paths:
             return
 
-        items = [FileItem(src=Path(p)) for p in paths if is_supported_word_file(Path(p))]
+        items = [FileItem(src=Path(p)) for p in paths if is_supported_file(Path(p))]
         if not items:
-            messagebox.showwarning("提示", "未选择有效的 .doc / .docx 文件。")
+            messagebox.showwarning("提示", "未选择有效的 .doc / .docx / .pdf 文件。")
             return
 
         self._add_file_items(items)
@@ -353,7 +353,7 @@ class ConverterApp(DnDCTk):
         folder_path = Path(folder)
         word_files = collect_word_files(folder_path, recursive=self.recursive_var.get())
         if not word_files:
-            messagebox.showwarning("提示", "文件夹中未找到 .doc / .docx 文件。")
+            messagebox.showwarning("提示", "文件夹中未找到 .doc / .docx / .pdf 文件。")
             return
 
         items = [FileItem(src=src, root=folder_path) for src in word_files]
@@ -449,8 +449,8 @@ class ConverterApp(DnDCTk):
         self.progress_label.configure(text=f"{current} / {total}")
 
         if message == "skipped":
-            self._update_file_status(src, "已跳过")
-            self._append_log(f"⏭ {src.name} → 已存在，跳过")
+            self._update_file_status(src, "已跳过(已存在)")
+            self._append_log(f"⏭ {src.name} → 输出文件已存在，跳过（勾选「覆盖已有文件」可重新转换）")
             return
 
         if success:

@@ -14,16 +14,19 @@ from markitdown import MarkItDown
 
 ProgressCallback = Callable[[int, int, Path, bool, str], None]
 
-SUPPORTED_EXTENSIONS = {".doc", ".docx"}
+SUPPORTED_EXTENSIONS = {".doc", ".docx", ".pdf"}
 
 
 class ConversionError(Exception):
-    """Raised when Word to markdown conversion fails."""
+    """Raised when document to markdown conversion fails."""
 
 
-def is_supported_word_file(path: Path) -> bool:
-    """Return True if path has a supported Word extension."""
+def is_supported_file(path: Path) -> bool:
+    """Return True if path has a supported input extension."""
     return Path(path).suffix.lower() in SUPPORTED_EXTENSIONS
+
+
+is_supported_word_file = is_supported_file
 
 
 def _extract_markdown(result: object) -> str:
@@ -140,7 +143,7 @@ def _convert_doc_to_docx(src: Path) -> tuple[Path, Path]:
 
 
 def _convert_with_markitdown(src: Path) -> str:
-    """Run markitdown on a .docx file and return markdown text."""
+    """Run markitdown on a supported file and return markdown text."""
     try:
         converter = MarkItDown()
         result = converter.convert(str(src))
@@ -209,7 +212,7 @@ def _convert_docx(src: Path, dst: Path) -> str:
 
 
 def _convert(src: Path, dst: Path) -> None:
-    """Convert a single .doc/.docx file to Markdown and write to dst."""
+    """Convert a single .doc/.docx/.pdf file to Markdown and write to dst."""
     src = Path(src)
     dst = Path(dst)
 
@@ -222,21 +225,24 @@ def _convert(src: Path, dst: Path) -> None:
     suffix = src.suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         raise ValueError(
-            f"Unsupported file format (expected .doc or .docx): {src.suffix}"
+            f"Unsupported file format (expected .doc, .docx, or .pdf): {src.suffix}"
         )
 
     temp_dir: Path | None = None
     try:
-        convert_src = src
-        if suffix == ".doc":
-            convert_src, temp_dir = _convert_doc_to_docx(src)
+        if suffix == ".pdf":
+            content = _convert_with_markitdown(src)
+        else:
+            convert_src = src
+            if suffix == ".doc":
+                convert_src, temp_dir = _convert_doc_to_docx(src)
 
-        try:
-            content = _convert_docx(convert_src, dst)
-        except ConversionError:
-            raise
-        except Exception:
-            content = _convert_with_markitdown(convert_src)
+            try:
+                content = _convert_docx(convert_src, dst)
+            except ConversionError:
+                raise
+            except Exception:
+                content = _convert_with_markitdown(convert_src)
     finally:
         if temp_dir is not None:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -259,7 +265,7 @@ def convert_file(src: Path, dst: Path) -> bool:
 
 
 def resolve_output_path(src: Path, out_dir: Path, input_root: Path | None = None) -> Path:
-    """Map source Word file to destination .md, preserving subdirs when input_root is set."""
+    """Map source file to destination .md, preserving subdirs when input_root is set."""
     out_dir = Path(out_dir)
     if input_root is not None:
         try:
@@ -271,11 +277,11 @@ def resolve_output_path(src: Path, out_dir: Path, input_root: Path | None = None
 
 
 def collect_word_files(path: Path, recursive: bool = False) -> list[Path]:
-    """Collect supported Word files from a file or directory."""
+    """Collect supported input files (.doc, .docx, .pdf) from a file or directory."""
     path = Path(path)
 
     if path.is_file():
-        return [path] if is_supported_word_file(path) else []
+        return [path] if is_supported_file(path) else []
 
     if not path.is_dir():
         return []
@@ -294,6 +300,16 @@ def collect_word_files(path: Path, recursive: bool = False) -> list[Path]:
 
 # Backward-compatible alias
 collect_docx_files = collect_word_files
+
+
+def _should_skip_output(dst: Path, *, overwrite: bool) -> bool:
+    """Skip only when a non-empty output already exists and overwrite is off."""
+    if overwrite or not dst.exists():
+        return False
+    try:
+        return dst.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def convert_batch(
@@ -323,7 +339,7 @@ def convert_batch(
         root = input_roots.get(src)
         dst = resolve_output_path(src, out_dir, root)
 
-        if dst.exists() and not overwrite:
+        if _should_skip_output(dst, overwrite=overwrite):
             skipped.append(src)
             if callback:
                 callback(index, total, src, True, "skipped")
