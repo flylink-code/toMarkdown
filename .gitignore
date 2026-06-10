@@ -13,3 +13,5 @@ htmlcov/
 .vscode/
 .DS_Store
 _batch_test
+tests/_att7022_outline_assets/
+test

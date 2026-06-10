@@ -208,7 +208,9 @@ def _convert_docx(src: Path, dst: Path) -> str:
     if not content:
         raise ConversionError("Conversion produced empty output")
 
-    return content
+    from tomarkdown.docx_outline import fix_markdown_outline
+
+    return fix_markdown_outline(content, src)
 
 
 def _convert(src: Path, dst: Path) -> None:
