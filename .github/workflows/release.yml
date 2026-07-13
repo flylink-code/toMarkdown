@@ -39,27 +39,30 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $$ver = $env:RELEASE_TAG.Substring(1)
-          $$archiveName = 'toMarkdown-v' + $$ver + '-windows-x64.zip'
-          Compress-Archive -Path "dist/toMarkdown/*" -DestinationPath ('dist/' + $$archiveName)
-          ('ARCHIVE_NAME=' + $$archiveName) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $env:PKG_VERSION = $env:RELEASE_TAG.Substring(1)
+          $env:ARCHIVE_NAME = "toMarkdown-v$($env:PKG_VERSION)-windows-x64.zip"
+          Compress-Archive -Path "dist/toMarkdown/*" -DestinationPath "dist/$($env:ARCHIVE_NAME)"
+          "ARCHIVE_NAME=$($env:ARCHIVE_NAME)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build MSI installer
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $$ver = $env:RELEASE_TAG.Substring(1)
-          $$parts = $$ver.Split('.')
-          $$wixVer = if ($$parts.Count -eq 3) { '{0}.0' -f $$ver } else { $$ver }
+          $env:PKG_VERSION = $env:RELEASE_TAG.Substring(1)
+          if (($env:PKG_VERSION.Split('.')).Count -eq 3) {
+            $env:WIX_VERSION = "$($env:PKG_VERSION).0"
+          } else {
+            $env:WIX_VERSION = $env:PKG_VERSION
+          }
           heat dir "dist/toMarkdown" -cg AppFiles -dr INSTALLFOLDER -gg -srd -sreg -out "installer/HarvestedFiles.wxs"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & candle @('-dVersion=' + $$wixVer, '-out', 'installer/', 'installer/Product.wxs', 'installer/HarvestedFiles.wxs')
+          & candle @("-dVersion=$($env:WIX_VERSION)", "-out", "installer/", "installer/Product.wxs", "installer/HarvestedFiles.wxs")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $$msiName = 'toMarkdown-v' + $$ver + '-windows-x64.msi'
-          & light -sval -out ('dist/' + $$msiName) 'installer/Product.wixobj' 'installer/HarvestedFiles.wixobj'
+          $env:MSI_NAME = "toMarkdown-v$($env:PKG_VERSION)-windows-x64.msi"
+          & light -sval -out "dist/$($env:MSI_NAME)" "installer/Product.wixobj" "installer/HarvestedFiles.wixobj"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ('MSI_NAME=' + $$msiName) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "MSI_NAME=$($env:MSI_NAME)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
