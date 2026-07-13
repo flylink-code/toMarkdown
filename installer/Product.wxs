@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+      Id="*"
+      Name="toMarkdown"
+      Language="2052"
+      Version="$(var.Version)"
+      Manufacturer="flylink-code"
+      UpgradeCode="{9B9A9A21-409A-4842-9D9F-8BD55E5D5B7A}">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of toMarkdown is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="toMarkdown" />
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="toMarkdown" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+  </Product>
+</Wix>

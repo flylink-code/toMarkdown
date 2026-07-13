@@ -1,6 +1,6 @@
 # toMarkdown
 
-**Word → Markdown Converter** — A desktop GUI tool to batch-convert `.doc` / `.docx` files to Markdown.
+**文档 ↔ Markdown 双向转换器** — Windows 桌面工具，支持 Word / PDF 与 Markdown 互相转换。
 
 [English](#english) · [中文](#中文)
 
@@ -14,17 +14,19 @@
 
 ### Overview
 
-**toMarkdown** is a lightweight Windows desktop application that converts Microsoft Word documents (`.doc` and `.docx`) to clean Markdown files. Built with Python, [markitdown](https://github.com/microsoft/markitdown), and [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter), it offers a modern GUI with drag-and-drop support, batch processing, and real-time progress tracking.
+**toMarkdown** is a lightweight Windows desktop app for bidirectional conversion between Microsoft Word / PDF and Markdown. Built with Python, [markitdown](https://github.com/microsoft/markitdown), [python-docx](https://python-docx.readthedocs.io/), [markdown-it-py](https://github.com/executablebooks/markdown-it-py), and [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter).
 
 ### Features
 
-- **Batch conversion** — Process multiple files or entire folders at once
-- **Legacy `.doc` support** — Converts old Word format via Microsoft Word or LibreOffice
-- **Drag & drop** — Drop files or folders directly into the window
+- **Word / PDF → Markdown** — Batch convert `.doc`, `.docx`, and `.pdf`
+- **Markdown → Word / PDF** — Export `.md` to `.docx` or `.pdf`
+- **Batch conversion** — Process multiple files or entire folders
+- **Legacy `.doc` support** — Via Microsoft Word or LibreOffice
+- **PDF export** — Via Microsoft Word or LibreOffice (from Markdown)
+- **Drag & drop** — Drop files or folders into the window
 - **Recursive scan** — Optionally include subdirectories
 - **Dark / Light theme** — Toggle appearance with one click
-- **Progress & logs** — Live progress bar and per-file success/failure log
-- **Open output folder** — Quick access to converted files after completion
+- **Progress & logs** — Live progress bar and per-file result log
 
 ### Download (Windows)
 
@@ -34,59 +36,47 @@ Download the latest release from **[GitHub Releases](https://github.com/flylink-
 2. Extract to any folder
 3. Run `toMarkdown.exe`
 
-> **Note:** Converting `.doc` files requires **Microsoft Word** or **LibreOffice** installed on your system. `.docx` files work out of the box.
+> **Notes:**
+> - Converting `.doc` files requires **Microsoft Word** or **LibreOffice**.
+> - Exporting Markdown to **PDF** also requires **Microsoft Word** or **LibreOffice**.
+> - `.docx` ↔ Markdown works without extra apps.
 
 ### Run from Source
 
 **Requirements:** Python 3.10+, Windows 10/11
 
 ```powershell
-# Clone the repository
 git clone https://github.com/flylink-code/toMarkdown.git
 cd toMarkdown
-
-# Create and activate virtual environment
 python -m venv .venv
 .venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Launch GUI
 python main.py
 ```
 
-Or double-click `run.bat` (auto-activates `.venv`).
+Or double-click `run.bat`.
 
-### Usage
+### CLI
 
-1. **Add files** — Click "+ Add Files" / "+ Add Folder", or drag files into the window
-2. **Set output directory** — Defaults to the same folder as input files
-3. **Options** — Enable "Recursive subdirectories" or "Overwrite existing files" as needed
-4. **Convert** — Click "Start Conversion" and wait for the summary dialog
+```powershell
+# Document → Markdown
+tomd input.docx -o out_dir
+tomd ./docs -r --overwrite
 
-### Project Structure
-
-```
-toMarkdown/
-├── tomarkdown/
-│   ├── converter.py      # Core conversion logic (no GUI)
-│   └── app.py              # CustomTkinter GUI
-├── tests/
-├── main.py                 # Application entry point
-├── run.bat                 # Windows quick-start script
-├── tomarkdown.spec         # PyInstaller build config
-└── requirements.txt
+# Markdown → Word / PDF
+tomd note.md -d from-md -f docx -o out_dir
+tomd ./notes -d from-md -f pdf -r
 ```
 
 ### Tech Stack
 
 | Component | Purpose |
 |-----------|---------|
-| [markitdown](https://github.com/microsoft/markitdown) | Document → Markdown conversion |
-| [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) | Modern GUI framework |
-| [tkinterdnd2](https://github.com/pmgagne/tkinterdnd2) | Drag-and-drop support |
-| pywin32 | `.doc` conversion via Word COM (Windows) |
+| [markitdown](https://github.com/microsoft/markitdown) | Document → Markdown |
+| [markdown-it-py](https://github.com/executablebooks/markdown-it-py) + [python-docx](https://python-docx.readthedocs.io/) | Markdown → Word |
+| Microsoft Word / LibreOffice | `.doc` handling and PDF export |
+| [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) | GUI |
+| [tkinterdnd2](https://github.com/pmgagne/tkinterdnd2) | Drag-and-drop |
 
 ### Build Windows Release
 
@@ -96,17 +86,10 @@ pyinstaller --noconfirm tomarkdown.spec
 # Output: dist/toMarkdown/toMarkdown.exe
 ```
 
-Push a version tag to trigger CI release:
-
-```bash
-git tag v0.3.0
-git push origin v0.3.0
-```
-
 ### Development
 
 ```powershell
-pip install -e ".[dev]"
+pip install -e .
 pytest tests/
 ```
 
@@ -116,17 +99,19 @@ pytest tests/
 
 ### 项目简介
 
-**toMarkdown** 是一款轻量级 Windows 桌面工具，用于将 Microsoft Word 文档（`.doc` / `.docx`）批量转换为 Markdown 文件。基于 Python、[markitdown](https://github.com/microsoft/markitdown) 和 [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) 构建，提供现代化图形界面，支持拖放操作、批量处理和实时进度显示。
+**toMarkdown** 是一款轻量级 Windows 桌面工具，支持 **Word / PDF ↔ Markdown** 双向批量转换。基于 Python、[markitdown](https://github.com/microsoft/markitdown)、[python-docx](https://python-docx.readthedocs.io/)、[markdown-it-py](https://github.com/executablebooks/markdown-it-py) 与 [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) 构建。
 
 ### 功能特性
 
-- **批量转换** — 一次处理多个文件或整个文件夹
-- **支持 `.doc` 旧格式** — 通过 Microsoft Word 或 LibreOffice 转换
+- **文档 → Markdown** — 批量转换 `.doc` / `.docx` / `.pdf`
+- **Markdown → 文档** — 导出为 `.docx` 或 `.pdf`
+- **批量处理** — 支持多文件与整个文件夹
+- **旧版 `.doc`** — 通过 Microsoft Word 或 LibreOffice 转换
+- **PDF 导出** — Markdown 转 PDF 同样依赖 Word 或 LibreOffice
 - **拖放文件** — 直接将文件或文件夹拖入窗口
-- **递归扫描** — 可选包含子目录中的 Word 文件
-- **深色 / 浅色主题** — 一键切换界面风格
-- **进度与日志** — 实时进度条及每个文件的转换结果
-- **打开输出目录** — 转换完成后快速查看结果
+- **递归扫描** — 可选包含子目录
+- **深色 / 浅色主题** — 一键切换
+- **进度与日志** — 实时进度条及每个文件的结果
 
 ### 下载（Windows 版）
 
@@ -136,48 +121,55 @@ pytest tests/
 2. 解压到任意目录
 3. 运行 `toMarkdown.exe`
 
-> **说明：** 转换 `.doc` 文件需要系统已安装 **Microsoft Word** 或 **LibreOffice**；`.docx` 文件可直接转换。
+> **说明：**
+> - 转换 `.doc` 需要安装 **Microsoft Word** 或 **LibreOffice**。
+> - Markdown 导出为 **PDF** 同样需要 **Microsoft Word** 或 **LibreOffice**。
+> - `.docx` ↔ Markdown 可直接使用。
 
 ### 从源码运行
 
 **环境要求：** Python 3.10+，Windows 10/11
 
 ```powershell
-# 克隆仓库
 git clone https://github.com/flylink-code/toMarkdown.git
 cd toMarkdown
-
-# 创建并激活虚拟环境
 python -m venv .venv
 .venv\Scripts\activate
-
-# 安装依赖
 pip install -r requirements.txt
-
-# 启动 GUI
 python main.py
 ```
 
-也可直接双击 `run.bat`（自动激活虚拟环境）。
+也可双击 `run.bat`。
 
 ### 使用方法
 
-1. **添加文件** — 点击「+ 添加文件」/「+ 添加文件夹」，或将文件拖入窗口
-2. **设置输出目录** — 默认与输入文件同目录
-3. **选项** — 按需勾选「递归子目录」「覆盖已有文件」
-4. **开始转换** — 点击「开始转换」，等待摘要对话框弹出
+1. 选择转换方向：**文档 → Markdown** 或 **Markdown → 文档**
+2. 若为导出方向，再选择 **Word (.docx)** 或 **PDF**
+3. 添加文件 / 文件夹（或拖放）
+4. 设置输出目录与选项后，点击「开始转换」
+
+### 命令行
+
+```powershell
+# 文档 → Markdown
+tomd input.docx -o out_dir
+
+# Markdown → Word / PDF
+tomd note.md -d from-md -f docx -o out_dir
+tomd ./notes -d from-md -f pdf -r
+```
 
 ### 项目结构
 
 ```
 toMarkdown/
 ├── tomarkdown/
-│   ├── converter.py      # 核心转换逻辑（无 GUI 依赖）
-│   └── app.py              # CustomTkinter 图形界面
+│   ├── converter.py      # 文档 → Markdown
+│   ├── md_export.py      # Markdown → Word / PDF
+│   ├── app.py            # GUI
+│   └── cli.py            # 命令行
 ├── tests/
-├── main.py                 # 程序入口
-├── run.bat                 # Windows 一键启动
-├── tomarkdown.spec         # PyInstaller 打包配置
+├── main.py
 └── requirements.txt
 ```
 
@@ -185,25 +177,11 @@ toMarkdown/
 
 | 组件 | 用途 |
 |------|------|
-| [markitdown](https://github.com/microsoft/markitdown) | 文档转 Markdown |
-| [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) | 现代化 GUI 框架 |
-| [tkinterdnd2](https://github.com/pmgagne/tkinterdnd2) | 拖放文件支持 |
-| pywin32 | 通过 Word COM 转换 `.doc`（Windows） |
-
-### 打包 Windows 发布版
-
-```powershell
-pip install pyinstaller
-pyinstaller --noconfirm tomarkdown.spec
-# 输出: dist/toMarkdown/toMarkdown.exe
-```
-
-推送版本标签即可触发 CI 自动发布：
-
-```bash
-git tag v0.3.0
-git push origin v0.3.0
-```
+| markitdown | 文档转 Markdown |
+| markdown-it-py + python-docx | Markdown 转 Word |
+| Word / LibreOffice | `.doc` 与 PDF 导出 |
+| CustomTkinter | 图形界面 |
+| tkinterdnd2 | 拖放支持 |
 
 ### 开发
 

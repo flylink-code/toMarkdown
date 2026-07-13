@@ -1,4 +1,4 @@
-"""Core conversion logic using markitdown (no GUI dependencies)."""
+"""Core conversion logic: documents ↔ Markdown (no GUI dependencies)."""
 
 from __future__ import annotations
 
@@ -8,22 +8,35 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from markitdown import MarkItDown
 
+from tomarkdown.export_settings import ExportSettings
+
 ProgressCallback = Callable[[int, int, Path, bool, str], None]
 
-SUPPORTED_EXTENSIONS = {".doc", ".docx", ".pdf"}
+Direction = Literal["to_md", "from_md"]
+OutputFormat = Literal["md", "docx", "pdf"]
+
+# Document → Markdown inputs
+TO_MD_EXTENSIONS = {".doc", ".docx", ".pdf"}
+# Markdown → Document inputs
+FROM_MD_EXTENSIONS = {".md", ".markdown"}
+
+SUPPORTED_EXTENSIONS = TO_MD_EXTENSIONS  # backward-compatible alias
 
 
 class ConversionError(Exception):
-    """Raised when document to markdown conversion fails."""
+    """Raised when document conversion fails."""
 
 
-def is_supported_file(path: Path) -> bool:
-    """Return True if path has a supported input extension."""
-    return Path(path).suffix.lower() in SUPPORTED_EXTENSIONS
+def is_supported_file(path: Path, direction: Direction = "to_md") -> bool:
+    """Return True if path has a supported input extension for the direction."""
+    suffix = Path(path).suffix.lower()
+    if direction == "from_md":
+        return suffix in FROM_MD_EXTENSIONS
+    return suffix in TO_MD_EXTENSIONS
 
 
 is_supported_word_file = is_supported_file
@@ -213,7 +226,7 @@ def _convert_docx(src: Path, dst: Path) -> str:
     return fix_markdown_outline(content, src)
 
 
-def _convert(src: Path, dst: Path) -> None:
+def _convert_to_md(src: Path, dst: Path) -> None:
     """Convert a single .doc/.docx/.pdf file to Markdown and write to dst."""
     src = Path(src)
     dst = Path(dst)
@@ -225,7 +238,7 @@ def _convert(src: Path, dst: Path) -> None:
         raise ValueError(f"Source is not a file: {src}")
 
     suffix = src.suffix.lower()
-    if suffix not in SUPPORTED_EXTENSIONS:
+    if suffix not in TO_MD_EXTENSIONS:
         raise ValueError(
             f"Unsupported file format (expected .doc, .docx, or .pdf): {src.suffix}"
         )
@@ -257,47 +270,111 @@ def _convert(src: Path, dst: Path) -> None:
         raise ConversionError(f"Failed to write output file {dst}: {exc}") from exc
 
 
-def convert_file(src: Path, dst: Path) -> bool:
+def _convert_from_md(
+    src: Path,
+    dst: Path,
+    output_format: OutputFormat,
+    *,
+    export_settings: ExportSettings | None = None,
+) -> None:
+    """Convert a Markdown file to .docx or .pdf."""
+    from tomarkdown.md_export import convert_md_to_docx, convert_md_to_pdf
+
+    if output_format == "docx":
+        convert_md_to_docx(src, dst, settings=export_settings)
+    elif output_format == "pdf":
+        convert_md_to_pdf(src, dst, settings=export_settings)
+    else:
+        raise ValueError(f"Unsupported output format for Markdown export: {output_format}")
+
+
+def _convert(
+    src: Path,
+    dst: Path,
+    *,
+    direction: Direction = "to_md",
+    output_format: OutputFormat | None = None,
+    export_settings: ExportSettings | None = None,
+) -> None:
+    """Convert a single file according to direction and output format."""
+    if direction == "from_md":
+        fmt: OutputFormat = output_format or "docx"
+        if fmt == "md":
+            raise ValueError("Markdown export requires output format docx or pdf")
+        _convert_from_md(src, dst, fmt, export_settings=export_settings)
+        return
+
+    _convert_to_md(src, dst)
+
+
+def convert_file(
+    src: Path,
+    dst: Path,
+    *,
+    direction: Direction = "to_md",
+    output_format: OutputFormat | None = None,
+    export_settings: ExportSettings | None = None,
+) -> bool:
     """Convert a single file. Returns True on success, False on failure."""
     try:
-        _convert(src, dst)
+        _convert(
+            src,
+            dst,
+            direction=direction,
+            output_format=output_format,
+            export_settings=export_settings,
+        )
         return True
     except Exception:
         return False
 
 
-def resolve_output_path(src: Path, out_dir: Path, input_root: Path | None = None) -> Path:
-    """Map source file to destination .md, preserving subdirs when input_root is set."""
+def resolve_output_path(
+    src: Path,
+    out_dir: Path,
+    input_root: Path | None = None,
+    *,
+    output_suffix: str = ".md",
+) -> Path:
+    """Map source file to destination path, preserving subdirs when input_root is set."""
     out_dir = Path(out_dir)
+    if not output_suffix.startswith("."):
+        output_suffix = f".{output_suffix}"
     if input_root is not None:
         try:
             relative = Path(src).relative_to(input_root)
-            return out_dir / relative.with_suffix(".md")
+            return out_dir / relative.with_suffix(output_suffix)
         except ValueError:
             pass
-    return out_dir / Path(src).with_suffix(".md").name
+    return out_dir / f"{Path(src).stem}{output_suffix}"
 
 
-def collect_word_files(path: Path, recursive: bool = False) -> list[Path]:
-    """Collect supported input files (.doc, .docx, .pdf) from a file or directory."""
+def collect_files(
+    path: Path,
+    recursive: bool = False,
+    *,
+    direction: Direction = "to_md",
+) -> list[Path]:
+    """Collect supported input files from a file or directory for the given direction."""
     path = Path(path)
+    extensions = FROM_MD_EXTENSIONS if direction == "from_md" else TO_MD_EXTENSIONS
 
     if path.is_file():
-        return [path] if is_supported_file(path) else []
+        return [path] if is_supported_file(path, direction) else []
 
     if not path.is_dir():
         return []
 
-    if recursive:
-        files: list[Path] = []
-        for ext in SUPPORTED_EXTENSIONS:
-            files.extend(path.glob(f"**/*{ext}"))
-        return sorted(set(files))
-
-    files = []
-    for ext in SUPPORTED_EXTENSIONS:
-        files.extend(path.glob(f"*{ext}"))
+    pattern_prefix = "**/*" if recursive else "*"
+    files: list[Path] = []
+    for ext in extensions:
+        files.extend(path.glob(f"{pattern_prefix}{ext}"))
     return sorted(set(files))
+
+
+def collect_word_files(path: Path, recursive: bool = False) -> list[Path]:
+    """Collect supported document→Markdown input files (.doc, .docx, .pdf)."""
+    return collect_files(path, recursive, direction="to_md")
 
 
 # Backward-compatible alias
@@ -321,16 +398,33 @@ def convert_batch(
     *,
     overwrite: bool = False,
     input_roots: dict[Path, Path] | None = None,
+    direction: Direction = "to_md",
+    output_format: OutputFormat | None = None,
+    export_settings: ExportSettings | None = None,
 ) -> dict[str, Any]:
     """
-    Batch convert files to Markdown under out_dir.
+    Batch convert files under out_dir.
+
+    direction:
+      - to_md: .doc/.docx/.pdf → .md
+      - from_md: .md → .docx or .pdf (set output_format)
 
     callback(current, total, src, success, message) is invoked after each file.
     input_roots maps each source file to its folder root for relative output paths.
+    export_settings applies to Markdown → document export (header/footer, etc.).
     """
     out_dir = Path(out_dir)
     input_roots = input_roots or {}
     total = len(files)
+
+    if direction == "from_md":
+        fmt: OutputFormat = output_format or "docx"
+        if fmt not in {"docx", "pdf"}:
+            raise ValueError("from_md requires output_format 'docx' or 'pdf'")
+        suffix = f".{fmt}"
+    else:
+        fmt = "md"
+        suffix = ".md"
 
     succeeded: list[Path] = []
     failed: list[tuple[Path, str]] = []
@@ -339,7 +433,7 @@ def convert_batch(
     for index, src in enumerate(files, start=1):
         src = Path(src)
         root = input_roots.get(src)
-        dst = resolve_output_path(src, out_dir, root)
+        dst = resolve_output_path(src, out_dir, root, output_suffix=suffix)
 
         if _should_skip_output(dst, overwrite=overwrite):
             skipped.append(src)
@@ -348,7 +442,13 @@ def convert_batch(
             continue
 
         try:
-            _convert(src, dst)
+            _convert(
+                src,
+                dst,
+                direction=direction,
+                output_format=fmt,
+                export_settings=export_settings,
+            )
             succeeded.append(src)
             if callback:
                 callback(index, total, src, True, "")
@@ -369,4 +469,4 @@ def convert_batch(
 
 
 # Backward-compatible alias for tests
-convert_docx_to_md = _convert
+convert_docx_to_md = _convert_to_md

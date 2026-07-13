@@ -1,4 +1,4 @@
-"""CLI entry point for batch docx to markdown conversion."""
+"""CLI entry point for bidirectional document ↔ Markdown conversion."""
 
 from __future__ import annotations
 
@@ -8,7 +8,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from tomarkdown.converter import ConversionError, convert_docx_to_md
+from tomarkdown.converter import (
+    ConversionError,
+    Direction,
+    OutputFormat,
+    collect_files,
+    convert_batch,
+    resolve_output_path,
+)
 
 
 @dataclass
@@ -33,7 +40,7 @@ class BatchResult:
 
 
 def collect_docx_files(input_path: Path, recursive: bool) -> list[Path]:
-    """Collect .docx files from a file or directory."""
+    """Collect .docx files from a file or directory (legacy helper)."""
     input_path = Path(input_path)
 
     if input_path.is_file():
@@ -46,20 +53,6 @@ def collect_docx_files(input_path: Path, recursive: bool) -> list[Path]:
 
     pattern = "**/*.docx" if recursive else "*.docx"
     return sorted(input_path.glob(pattern))
-
-
-def resolve_output_path(
-    src: Path,
-    input_root: Path,
-    output_dir: Path,
-) -> Path:
-    """Map source .docx path to destination .md path, preserving subdirs."""
-    if input_root.is_file():
-        relative = src.name
-    else:
-        relative = src.relative_to(input_root)
-
-    return output_dir / relative.with_suffix(".md")
 
 
 def write_error_log(log_path: Path, failures: list[tuple[Path, str]]) -> None:
@@ -84,8 +77,10 @@ def run_batch(
     overwrite: bool = False,
     verbose: bool = False,
     error_log: Path | None = None,
+    direction: Direction = "to_md",
+    output_format: OutputFormat | None = None,
 ) -> BatchResult:
-    """Convert all .docx files under input_path."""
+    """Convert files under input_path according to direction."""
     input_path = Path(input_path).resolve()
 
     if output_dir is None:
@@ -93,36 +88,72 @@ def run_batch(
     else:
         output_dir = Path(output_dir).resolve()
 
-    files = collect_docx_files(input_path, recursive)
+    files = collect_files(input_path, recursive, direction=direction)
     result = BatchResult()
     total = len(files)
 
     if total == 0:
-        print("No .docx files found.", file=sys.stderr)
+        kind = "Markdown" if direction == "from_md" else "document"
+        print(f"No {kind} files found.", file=sys.stderr)
         return result
 
-    for index, src in enumerate(files, start=1):
-        dst = resolve_output_path(src, input_path, output_dir)
+    if direction == "from_md":
+        fmt: OutputFormat = output_format or "docx"
+        suffix = f".{fmt}"
+    else:
+        fmt = "md"
+        suffix = ".md"
 
-        if dst.exists() and not overwrite:
+    input_roots: dict[Path, Path] = {}
+    if input_path.is_dir():
+        for src in files:
+            input_roots[src] = input_path
+
+    def on_progress(current: int, total_n: int, src: Path, success: bool, message: str) -> None:
+        if message == "skipped":
             result.skipped.append(src)
             if verbose:
-                print(f"[{index}/{total}] Skipped (exists): {src}")
-            continue
+                print(f"[{current}/{total_n}] Skipped (exists): {src}")
+            return
 
         if verbose:
-            print(f"[{index}/{total}] Converting: {src}")
+            print(f"[{current}/{total_n}] Converting: {src}")
         else:
-            print(f"[{index}/{total}] {src.name}")
+            print(f"[{current}/{total_n}] {src.name}")
 
-        try:
-            convert_docx_to_md(src, dst)
+        if success:
             result.succeeded.append(src)
             if verbose:
+                dst = resolve_output_path(
+                    src,
+                    output_dir,
+                    input_roots.get(src),
+                    output_suffix=suffix,
+                )
                 print(f"  -> {dst}")
-        except (ConversionError, FileNotFoundError, ValueError) as exc:
-            result.failed.append((src, str(exc)))
-            print(f"  ERROR: {exc}", file=sys.stderr)
+        else:
+            result.failed.append((src, message))
+            print(f"  ERROR: {message}", file=sys.stderr)
+
+    batch = convert_batch(
+        files,
+        output_dir,
+        callback=on_progress,
+        overwrite=overwrite,
+        input_roots=input_roots,
+        direction=direction,
+        output_format=fmt,
+    )
+
+    # Prefer batch counters if callback bookkeeping drifts
+    if (
+        len(result.succeeded) != batch["success_count"]
+        or len(result.failed) != batch["failure_count"]
+        or len(result.skipped) != batch["skipped_count"]
+    ):
+        result.succeeded = list(batch["success"])
+        result.failed = list(batch["failed"])
+        result.skipped = list(batch["skipped"])
 
     if error_log is not None:
         write_error_log(error_log, result.failed)
@@ -138,19 +169,20 @@ def print_summary(result: BatchResult) -> None:
     if result.skipped_count:
         parts.append(f"跳过 {result.skipped_count}")
 
-    print(f"\n汇总: {' / '.join(parts)} (共 {result.success_count + result.failure_count + result.skipped_count} 个文件)")
+    total = result.success_count + result.failure_count + result.skipped_count
+    print(f"\n汇总: {' / '.join(parts)} (共 {total} 个文件)")
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="tomd",
-        description="Batch convert .docx files to Markdown using markitdown.",
+        description="Bidirectional batch converter: Word/PDF ↔ Markdown.",
     )
     parser.add_argument(
         "input",
         type=Path,
-        help="Input .docx file or directory containing .docx files",
+        help="Input file or directory",
     )
     parser.add_argument(
         "-o",
@@ -160,15 +192,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output directory (default: same directory as input)",
     )
     parser.add_argument(
+        "-d",
+        "--direction",
+        choices=["to-md", "from-md"],
+        default="to-md",
+        help="Conversion direction (default: to-md)",
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=["docx", "pdf"],
+        default="docx",
+        help="Output format when direction is from-md (default: docx)",
+    )
+    parser.add_argument(
         "-r",
         "--recursive",
         action="store_true",
-        help="Recursively process .docx files in subdirectories",
+        help="Recursively process files in subdirectories",
     )
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Overwrite existing .md files",
+        help="Overwrite existing output files",
     )
     parser.add_argument(
         "-v",
@@ -190,6 +236,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    direction: Direction = "from_md" if args.direction == "from-md" else "to_md"
+    output_format: OutputFormat | None = args.format if direction == "from_md" else "md"
+
     try:
         result = run_batch(
             args.input,
@@ -198,8 +247,10 @@ def main(argv: list[str] | None = None) -> int:
             overwrite=args.overwrite,
             verbose=args.verbose,
             error_log=args.error_log,
+            direction=direction,
+            output_format=output_format,
         )
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, ConversionError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

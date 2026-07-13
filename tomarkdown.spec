@@ -24,6 +24,8 @@ for package in (
     "magika",
     "pdfplumber",
     "pdfminer",
+    "docx",
+    "markdown_it",
 ):
     pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package)
     datas += pkg_datas

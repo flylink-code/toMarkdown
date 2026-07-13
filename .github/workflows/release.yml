@@ -28,6 +28,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Install WiX Toolset
+        run: choco install wixtoolset -y --no-progress
+
       - name: Build executable
         run: pyinstaller --noconfirm tomarkdown.spec
 
@@ -39,11 +42,23 @@ jobs:
           Compress-Archive -Path "dist/toMarkdown/*" -DestinationPath "dist/$archiveName"
           "ARCHIVE_NAME=$archiveName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Build MSI installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          heat dir "dist/toMarkdown" -cg AppFiles -dr INSTALLFOLDER -gg -srd -out "installer/HarvestedFiles.wxs"
+          candle -dVersion=$version -out "installer/" "installer/Product.wxs" "installer/HarvestedFiles.wxs"
+          $msiName = "toMarkdown-v$version-windows-x64.msi"
+          light -out "dist/$msiName" "installer/Product.wixobj" "installer/HarvestedFiles.wixobj"
+          "MSI_NAME=$msiName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
-          files: dist/${{ env.ARCHIVE_NAME }}
+          files: |
+            dist/${{ env.ARCHIVE_NAME }}
+            dist/${{ env.MSI_NAME }}
           draft: false
           prerelease: false
