@@ -1,10 +1,27 @@
-"""Settings dialog for Markdown export options (extensible tabbed UI)."""
+"""PySide6 settings dialog for Markdown export options."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-import customtkinter as ctk
+from PySide6.QtWidgets import (
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QRadioButton,
+    QScrollArea,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from tomarkdown.export_settings import (
     PLACEHOLDER_HINT,
@@ -16,567 +33,397 @@ from tomarkdown.export_settings import (
 )
 
 
-class ExportSettingsDialog(ctk.CTkToplevel):
-    """Modal dialog for Markdown → document export settings.
+class ColorField(QWidget):
+    """Hex color entry with live swatch preview."""
 
-    Tabs:
-      - 输出设置: export format
-      - 样式: heading colors, code block / inline code styling
-      - 页眉页脚 / 文档属性: document chrome
-    """
+    def __init__(self, value: str = "1F2328", parent=None) -> None:
+        super().__init__(parent)
+        self._default = value
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.entry = QLineEdit(value)
+        self.entry.setMaximumWidth(120)
+        self.swatch = QFrame()
+        self.swatch.setFixedSize(28, 22)
+        self.swatch.setFrameShape(QFrame.Shape.StyledPanel)
+
+        layout.addWidget(self.entry)
+        layout.addWidget(self.swatch)
+        layout.addStretch(1)
+
+        self.entry.textChanged.connect(self._refresh)
+        self._refresh(value)
+
+    def text(self) -> str:
+        return self.entry.text().strip()
+
+    def set_text(self, value: str) -> None:
+        self.entry.setText(value)
+
+    def _refresh(self, _text: str = "") -> None:
+        hex_color = normalize_hex_color(self.entry.text(), self._default)
+        self.swatch.setStyleSheet(
+            f"background-color: #{hex_color}; border: 1px solid #888; border-radius: 3px;"
+        )
+
+
+class ExportSettingsDialog(QDialog):
+    """Modal dialog for Markdown → document export settings."""
 
     def __init__(
         self,
-        master,
+        parent=None,
         *,
         settings: ExportSettings | None = None,
         on_saved: Callable[[ExportSettings], None] | None = None,
     ) -> None:
-        super().__init__(master)
-
+        super().__init__(parent)
         self._on_saved = on_saved
         self._settings = settings or load_export_settings()
         self._result: ExportSettings | None = None
+        self._suppress_custom_mark = False
 
-        self.title("Markdown 导出设置")
-        self.geometry("620x580")
-        self.minsize(520, 480)
-        self.transient(master)
-        self.grab_set()
-        self.focus_force()
+        self.setWindowTitle("Markdown 导出设置")
+        self.resize(640, 600)
+        self.setMinimumSize(540, 480)
+        self.setModal(True)
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        self._tabs = ctk.CTkTabview(self)
-        self._tabs.grid(row=0, column=0, sticky="nsew", padx=16, pady=(16, 8))
-
-        self._tab_output = self._tabs.add("输出设置")
-        self._tab_style = self._tabs.add("样式")
-        self._tab_header = self._tabs.add("页眉页脚")
-        self._tab_props = self._tabs.add("文档属性")
+        root = QVBoxLayout(self)
+        self.tabs = QTabWidget()
+        root.addWidget(self.tabs, 1)
 
         self._build_output_tab()
         self._build_style_tab()
         self._build_header_footer_tab()
         self._build_properties_tab()
-        self._build_buttons()
 
-        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
-        self.after(50, self._center_on_parent)
-
-    def _center_on_parent(self) -> None:
-        try:
-            self.update_idletasks()
-            parent = self.master
-            px = parent.winfo_rootx()
-            py = parent.winfo_rooty()
-            pw = parent.winfo_width()
-            ph = parent.winfo_height()
-            w = self.winfo_width()
-            h = self.winfo_height()
-            x = px + max(0, (pw - w) // 2)
-            y = py + max(0, (ph - h) // 2)
-            self.geometry(f"+{x}+{y}")
-        except Exception:
-            pass
+        buttons = QDialogButtonBox()
+        reset_btn = buttons.addButton("恢复默认", QDialogButtonBox.ButtonRole.ResetRole)
+        buttons.addButton(QDialogButtonBox.StandardButton.Save)
+        buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
+        reset_btn.clicked.connect(self._on_reset)
+        buttons.accepted.connect(self._on_save)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
 
     def _build_output_tab(self) -> None:
-        tab = self._tab_output
-        tab.grid_columnconfigure(1, weight=1)
+        page = QWidget()
+        layout = QVBoxLayout(page)
 
-        ctk.CTkLabel(
-            tab,
-            text="导出格式",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(12, 4))
-
-        ctk.CTkLabel(tab, text="目标格式:").grid(row=1, column=0, sticky="w", padx=8, pady=8)
-        self._output_format = ctk.CTkSegmentedButton(
-            tab,
-            values=["Word (.docx)", "PDF"],
-            command=self._on_format_preview,
-        )
-        self._output_format.set(
-            "PDF" if self._settings.output_format == "pdf" else "Word (.docx)"
-        )
-        self._output_format.grid(row=1, column=1, sticky="w", padx=8, pady=8)
-
-        self._format_hint = ctk.CTkLabel(
-            tab,
-            text="",
-            text_color=("gray40", "gray65"),
-            wraplength=480,
-            justify="left",
-            anchor="w",
-        )
-        self._format_hint.grid(row=2, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 12))
-        self._on_format_preview(self._output_format.get())
-
-        ctk.CTkLabel(
-            tab,
-            text="说明",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).grid(row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4))
-
-        ctk.CTkLabel(
-            tab,
-            text=(
-                "• Word (.docx)：纯本地生成，无需安装 Office。\n"
-                "• PDF：先生成 Word，再通过本机 Microsoft Word 或 LibreOffice 转换。\n"
-                "• 页眉页脚、文档属性、样式等选项对两种格式均生效。"
-            ),
-            text_color=("gray40", "gray65"),
-            wraplength=500,
-            justify="left",
-            anchor="w",
-        ).grid(row=4, column=0, columnspan=2, sticky="ew", padx=8, pady=(0, 12))
-
-    def _on_format_preview(self, value: str) -> None:
-        if "PDF" in value:
-            self._format_hint.configure(
-                text="当前选择：PDF。导出时需要本机已安装 Microsoft Word 或 LibreOffice。"
-            )
+        layout.addWidget(self._section_label("导出格式"))
+        form = QFormLayout()
+        self.format_docx = QRadioButton("Word (.docx)")
+        self.format_pdf = QRadioButton("PDF")
+        self.format_group = QButtonGroup(self)
+        self.format_group.addButton(self.format_docx)
+        self.format_group.addButton(self.format_pdf)
+        if self._settings.output_format == "pdf":
+            self.format_pdf.setChecked(True)
         else:
-            self._format_hint.configure(text="当前选择：Word (.docx)。可直接生成，兼容性最好。")
+            self.format_docx.setChecked(True)
+
+        fmt_row = QHBoxLayout()
+        fmt_row.addWidget(self.format_docx)
+        fmt_row.addWidget(self.format_pdf)
+        fmt_row.addStretch(1)
+        form.addRow("目标格式:", fmt_row)
+        layout.addLayout(form)
+
+        self.format_hint = QLabel()
+        self.format_hint.setWordWrap(True)
+        layout.addWidget(self.format_hint)
+        self.format_docx.toggled.connect(self._update_format_hint)
+        self.format_pdf.toggled.connect(self._update_format_hint)
+        self._update_format_hint()
+
+        layout.addWidget(self._section_label("说明"))
+        tip = QLabel(
+            "• Word (.docx)：纯本地生成，无需安装 Office。\n"
+            "• PDF：先生成 Word，再通过本机 Microsoft Word 或 LibreOffice 转换。\n"
+            "• 页眉页脚、文档属性、样式等选项对两种格式均生效。"
+        )
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
+        layout.addStretch(1)
+        self.tabs.addTab(page, "输出设置")
 
     def _build_style_tab(self) -> None:
-        tab = self._tab_style
-        tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
-        self._suppress_custom_mark = False
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QWidget()
+        layout = QVBoxLayout(body)
 
-        scroll = ctk.CTkScrollableFrame(tab)
-        scroll.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
-        scroll.grid_columnconfigure(1, weight=1)
+        layout.addWidget(self._section_label("风格预设"))
+        preset_row = QHBoxLayout()
+        preset_row.addWidget(QLabel("预设:"))
+        self.style_preset = QComboBox()
+        for key in ("typora", "github", "classic", "custom"):
+            self.style_preset.addItem(STYLE_PRESET_LABELS[key], key)
+        idx = self.style_preset.findData(self._settings.style_preset)
+        self.style_preset.setCurrentIndex(max(0, idx))
+        self.style_preset.currentIndexChanged.connect(self._on_preset_change)
+        preset_row.addWidget(self.style_preset)
+        preset_row.addStretch(1)
+        layout.addLayout(preset_row)
 
-        row = 0
-        ctk.CTkLabel(
-            scroll,
-            text="风格预设",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(8, 4))
+        layout.addWidget(self._section_label("标题颜色"))
+        form = QFormLayout()
+        self.heading_h1 = ColorField(self._settings.heading_h1_color)
+        self.heading_h2 = ColorField(self._settings.heading_h2_color)
+        self.heading_h3 = ColorField(self._settings.heading_h3_color)
+        self.heading_color = ColorField(self._settings.heading_color)
+        form.addRow("H1 颜色:", self.heading_h1)
+        form.addRow("H2 颜色:", self.heading_h2)
+        form.addRow("H3 颜色:", self.heading_h3)
+        form.addRow("H4+ 颜色:", self.heading_color)
+        layout.addLayout(form)
 
-        row += 1
-        ctk.CTkLabel(scroll, text="预设:").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-        preset_values = [STYLE_PRESET_LABELS[k] for k in ("typora", "github", "classic", "custom")]
-        self._style_preset = ctk.CTkOptionMenu(
-            scroll,
-            values=preset_values,
-            command=self._on_preset_change,
-            width=180,
+        layout.addWidget(self._section_label("代码块"))
+        code_form = QFormLayout()
+        self.code_bg = ColorField(self._settings.code_bg)
+        self.code_border = ColorField(self._settings.code_border)
+        self.code_font = QLineEdit(self._settings.code_font)
+        self.code_font_size = QLineEdit(str(self._settings.code_font_size))
+        self.code_font_size.setMaximumWidth(80)
+        code_form.addRow("背景色:", self.code_bg)
+        code_form.addRow("边框色:", self.code_border)
+        code_form.addRow("字体:", self.code_font)
+        code_form.addRow("字号:", self.code_font_size)
+        layout.addLayout(code_form)
+
+        self.code_highlight = QCheckBox("语法高亮")
+        self.code_highlight.setChecked(self._settings.code_highlight)
+        self.code_show_language = QCheckBox("显示语言标签")
+        self.code_show_language.setChecked(self._settings.code_show_language)
+        layout.addWidget(self.code_highlight)
+        layout.addWidget(self.code_show_language)
+
+        layout.addWidget(self._section_label("行内代码"))
+        inline_form = QFormLayout()
+        self.inline_code_fg = ColorField(self._settings.inline_code_fg)
+        self.inline_code_bg = ColorField(self._settings.inline_code_bg)
+        inline_form.addRow("文字色:", self.inline_code_fg)
+        inline_form.addRow("背景色:", self.inline_code_bg)
+        layout.addLayout(inline_form)
+
+        hint = QLabel(
+            "颜色填写 6 位十六进制，如 1F2328 或 #1F2328。修改任意项将自动切到「自定义」。"
         )
-        self._style_preset.set(
-            STYLE_PRESET_LABELS.get(self._settings.style_preset, STYLE_PRESET_LABELS["custom"])
-        )
-        self._style_preset.grid(row=row, column=1, columnspan=2, sticky="w", padx=8, pady=6)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addStretch(1)
 
-        row += 1
-        ctk.CTkLabel(
-            scroll,
-            text="标题颜色",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(14, 4))
+        for field in (
+            self.heading_h1,
+            self.heading_h2,
+            self.heading_h3,
+            self.heading_color,
+            self.code_bg,
+            self.code_border,
+            self.inline_code_fg,
+            self.inline_code_bg,
+        ):
+            field.entry.textChanged.connect(self._mark_custom_preset)
+        self.code_font.textChanged.connect(self._mark_custom_preset)
+        self.code_font_size.textChanged.connect(self._mark_custom_preset)
+        self.code_highlight.toggled.connect(self._mark_custom_preset)
+        self.code_show_language.toggled.connect(self._mark_custom_preset)
 
-        self._heading_h1_color, row = self._add_color_row(
-            scroll, row + 1, "H1 颜色:", self._settings.heading_h1_color
-        )
-        self._heading_h2_color, row = self._add_color_row(
-            scroll, row, "H2 颜色:", self._settings.heading_h2_color
-        )
-        self._heading_h3_color, row = self._add_color_row(
-            scroll, row, "H3 颜色:", self._settings.heading_h3_color
-        )
-        self._heading_color, row = self._add_color_row(
-            scroll, row, "H4+ 颜色:", self._settings.heading_color
-        )
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
+        self.tabs.addTab(page, "样式")
 
-        ctk.CTkLabel(
-            scroll,
-            text="代码块",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(14, 4))
-        row += 1
+    def _build_header_footer_tab(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        form = QFormLayout()
 
-        self._code_bg, row = self._add_color_row(scroll, row, "背景色:", self._settings.code_bg)
-        self._code_border, row = self._add_color_row(
-            scroll, row, "边框色:", self._settings.code_border
-        )
+        self.header_enabled = QCheckBox("启用页眉")
+        self.header_enabled.setChecked(self._settings.header_enabled)
+        layout.addWidget(self.header_enabled)
 
-        ctk.CTkLabel(scroll, text="字体:").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-        self._code_font = ctk.CTkEntry(scroll, width=180)
-        self._code_font.grid(row=row, column=1, sticky="w", padx=8, pady=6)
-        self._code_font.insert(0, self._settings.code_font)
-        self._code_font.bind("<KeyRelease>", lambda _e: self._mark_custom_preset())
-        row += 1
+        self.header_text = QTextEdit(self._settings.header_text)
+        self.header_text.setMaximumHeight(70)
+        form.addRow("页眉内容:", self.header_text)
+        self.header_align = self._align_combo(self._settings.header_align)
+        form.addRow("页眉对齐:", self.header_align)
 
-        ctk.CTkLabel(scroll, text="字号:").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-        self._code_font_size = ctk.CTkEntry(scroll, width=80)
-        self._code_font_size.grid(row=row, column=1, sticky="w", padx=8, pady=6)
-        self._code_font_size.insert(0, str(self._settings.code_font_size))
-        self._code_font_size.bind("<KeyRelease>", lambda _e: self._mark_custom_preset())
-        row += 1
+        self.footer_enabled = QCheckBox("启用页脚")
+        self.footer_enabled.setChecked(self._settings.footer_enabled)
+        layout.addWidget(self.footer_enabled)
 
-        self._code_highlight = ctk.BooleanVar(value=self._settings.code_highlight)
-        ctk.CTkCheckBox(
-            scroll,
-            text="语法高亮",
-            variable=self._code_highlight,
-            command=self._mark_custom_preset,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", padx=8, pady=6)
-        row += 1
+        self.footer_text = QTextEdit(self._settings.footer_text)
+        self.footer_text.setMaximumHeight(70)
+        form.addRow("页脚内容:", self.footer_text)
+        self.footer_align = self._align_combo(self._settings.footer_align)
+        form.addRow("页脚对齐:", self.footer_align)
 
-        self._code_show_language = ctk.BooleanVar(value=self._settings.code_show_language)
-        ctk.CTkCheckBox(
-            scroll,
-            text="显示语言标签",
-            variable=self._code_show_language,
-            command=self._mark_custom_preset,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", padx=8, pady=6)
-        row += 1
+        self.diff_first = QCheckBox("首页不同")
+        self.diff_first.setChecked(self._settings.different_first_page)
+        layout.addWidget(self.diff_first)
 
-        ctk.CTkLabel(
-            scroll,
-            text="行内代码",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(14, 4))
-        row += 1
+        self.first_header = QLineEdit(self._settings.first_header_text)
+        self.first_footer = QLineEdit(self._settings.first_footer_text)
+        form.addRow("首页页眉:", self.first_header)
+        form.addRow("首页页脚:", self.first_footer)
+        layout.addLayout(form)
 
-        self._inline_code_fg, row = self._add_color_row(
-            scroll, row, "文字色:", self._settings.inline_code_fg
-        )
-        self._inline_code_bg, row = self._add_color_row(
-            scroll, row, "背景色:", self._settings.inline_code_bg
-        )
+        hint = QLabel(PLACEHOLDER_HINT)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        self.tabs.addTab(page, "页眉页脚")
 
-        ctk.CTkLabel(
-            scroll,
-            text="颜色填写 6 位十六进制，如 1F2328 或 #1F2328。修改任意项将自动切到「自定义」。",
-            text_color=("gray40", "gray65"),
-            wraplength=500,
-            justify="left",
-            anchor="w",
-        ).grid(row=row, column=0, columnspan=3, sticky="ew", padx=8, pady=(12, 8))
+    def _build_properties_tab(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        form = QFormLayout()
+        self.doc_title = QLineEdit(self._settings.doc_title)
+        self.doc_title.setPlaceholderText("留空则使用首个一级标题或文件名")
+        self.doc_author = QLineEdit(self._settings.doc_author)
+        self.doc_subject = QLineEdit(self._settings.doc_subject)
+        form.addRow("标题:", self.doc_title)
+        form.addRow("作者:", self.doc_author)
+        form.addRow("主题:", self.doc_subject)
+        layout.addLayout(form)
+        tip = QLabel("这些信息会写入 Word 文档属性，并可用于页眉/页脚占位符。")
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
+        layout.addStretch(1)
+        self.tabs.addTab(page, "文档属性")
 
-    def _add_color_row(
-        self,
-        parent,
-        row: int,
-        label: str,
-        value: str,
-    ) -> tuple[ctk.CTkEntry, int]:
-        ctk.CTkLabel(parent, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=4)
-        entry = ctk.CTkEntry(parent, width=120)
-        entry.grid(row=row, column=1, sticky="w", padx=8, pady=4)
-        entry.insert(0, value)
-        swatch = ctk.CTkFrame(parent, width=28, height=22, corner_radius=4)
-        swatch.grid(row=row, column=2, sticky="w", padx=4, pady=4)
-        swatch.grid_propagate(False)
+    @staticmethod
+    def _section_label(text: str) -> QLabel:
+        label = QLabel(text)
+        font = label.font()
+        font.setBold(True)
+        font.setPointSize(max(font.pointSize(), 11))
+        label.setFont(font)
+        return label
 
-        def refresh(_event=None) -> None:
-            hex_color = normalize_hex_color(entry.get(), value)
-            try:
-                swatch.configure(fg_color=f"#{hex_color}")
-            except Exception:
-                swatch.configure(fg_color=("gray70", "gray40"))
-            self._mark_custom_preset()
+    @staticmethod
+    def _align_combo(value: str) -> QComboBox:
+        combo = QComboBox()
+        for key, text in (("left", "左"), ("center", "中"), ("right", "右")):
+            combo.addItem(text, key)
+        idx = combo.findData(value)
+        combo.setCurrentIndex(max(0, idx))
+        return combo
 
-        entry.bind("<KeyRelease>", refresh)
-        entry._color_swatch = swatch  # type: ignore[attr-defined]
-        entry._color_default = value  # type: ignore[attr-defined]
-        refresh()
-        return entry, row + 1
+    def _update_format_hint(self) -> None:
+        if self.format_pdf.isChecked():
+            self.format_hint.setText(
+                "当前选择：PDF。导出时需要本机已安装 Microsoft Word 或 LibreOffice。"
+            )
+        else:
+            self.format_hint.setText("当前选择：Word (.docx)。可直接生成，兼容性最好。")
 
-    def _refresh_color_swatch(self, entry: ctk.CTkEntry) -> None:
-        default = getattr(entry, "_color_default", "1F2328")
-        swatch = getattr(entry, "_color_swatch", None)
-        if swatch is None:
+    def _mark_custom_preset(self, *_args) -> None:
+        if self._suppress_custom_mark:
             return
-        hex_color = normalize_hex_color(entry.get(), default)
-        try:
-            swatch.configure(fg_color=f"#{hex_color}")
-        except Exception:
-            swatch.configure(fg_color=("gray70", "gray40"))
+        idx = self.style_preset.findData("custom")
+        if idx >= 0:
+            self.style_preset.blockSignals(True)
+            self.style_preset.setCurrentIndex(idx)
+            self.style_preset.blockSignals(False)
 
-    def _preset_key_from_label(self, label: str) -> str:
-        for key, text in STYLE_PRESET_LABELS.items():
-            if text == label:
-                return key
-        return "custom"
-
-    def _mark_custom_preset(self) -> None:
-        if getattr(self, "_suppress_custom_mark", False):
-            return
-        if hasattr(self, "_style_preset"):
-            self._style_preset.set(STYLE_PRESET_LABELS["custom"])
-
-    def _on_preset_change(self, label: str) -> None:
-        key = self._preset_key_from_label(label)
+    def _on_preset_change(self, _index: int = 0) -> None:
+        key = self.style_preset.currentData()
         if key == "custom":
             return
         temp = ExportSettings()
-        temp.apply_style_preset(key)
+        temp.apply_style_preset(str(key))
         self._suppress_custom_mark = True
         try:
-            self._heading_h1_color.delete(0, "end")
-            self._heading_h1_color.insert(0, temp.heading_h1_color)
-            self._heading_h2_color.delete(0, "end")
-            self._heading_h2_color.insert(0, temp.heading_h2_color)
-            self._heading_h3_color.delete(0, "end")
-            self._heading_h3_color.insert(0, temp.heading_h3_color)
-            self._heading_color.delete(0, "end")
-            self._heading_color.insert(0, temp.heading_color)
-            self._code_bg.delete(0, "end")
-            self._code_bg.insert(0, temp.code_bg)
-            self._code_border.delete(0, "end")
-            self._code_border.insert(0, temp.code_border)
-            self._code_font.delete(0, "end")
-            self._code_font.insert(0, temp.code_font)
-            self._code_font_size.delete(0, "end")
-            self._code_font_size.insert(0, str(temp.code_font_size))
-            self._code_highlight.set(temp.code_highlight)
-            self._code_show_language.set(temp.code_show_language)
-            self._inline_code_fg.delete(0, "end")
-            self._inline_code_fg.insert(0, temp.inline_code_fg)
-            self._inline_code_bg.delete(0, "end")
-            self._inline_code_bg.insert(0, temp.inline_code_bg)
-            for entry in (
-                self._heading_h1_color,
-                self._heading_h2_color,
-                self._heading_h3_color,
-                self._heading_color,
-                self._code_bg,
-                self._code_border,
-                self._inline_code_fg,
-                self._inline_code_bg,
-            ):
-                self._refresh_color_swatch(entry)
-            self._style_preset.set(STYLE_PRESET_LABELS[key])
+            self.heading_h1.set_text(temp.heading_h1_color)
+            self.heading_h2.set_text(temp.heading_h2_color)
+            self.heading_h3.set_text(temp.heading_h3_color)
+            self.heading_color.set_text(temp.heading_color)
+            self.code_bg.set_text(temp.code_bg)
+            self.code_border.set_text(temp.code_border)
+            self.code_font.setText(temp.code_font)
+            self.code_font_size.setText(str(temp.code_font_size))
+            self.code_highlight.setChecked(temp.code_highlight)
+            self.code_show_language.setChecked(temp.code_show_language)
+            self.inline_code_fg.set_text(temp.inline_code_fg)
+            self.inline_code_bg.set_text(temp.inline_code_bg)
         finally:
             self._suppress_custom_mark = False
 
-    def _build_header_footer_tab(self) -> None:
-        tab = self._tab_header
-        tab.grid_columnconfigure(1, weight=1)
-
-        row = 0
-        self._header_enabled = ctk.BooleanVar(value=self._settings.header_enabled)
-        ctk.CTkCheckBox(tab, text="启用页眉", variable=self._header_enabled).grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4)
-        )
-
-        row += 1
-        ctk.CTkLabel(tab, text="页眉内容:").grid(row=row, column=0, sticky="nw", padx=8, pady=4)
-        self._header_text = ctk.CTkTextbox(tab, height=56, wrap="word")
-        self._header_text.grid(row=row, column=1, sticky="ew", padx=8, pady=4)
-        self._header_text.insert("1.0", self._settings.header_text)
-
-        row += 1
-        ctk.CTkLabel(tab, text="页眉对齐:").grid(row=row, column=0, sticky="w", padx=8, pady=4)
-        self._header_align = ctk.CTkSegmentedButton(tab, values=["左", "中", "右"])
-        self._header_align.set({"left": "左", "center": "中", "right": "右"}.get(
-            self._settings.header_align, "中"
-        ))
-        self._header_align.grid(row=row, column=1, sticky="w", padx=8, pady=4)
-
-        row += 1
-        self._footer_enabled = ctk.BooleanVar(value=self._settings.footer_enabled)
-        ctk.CTkCheckBox(tab, text="启用页脚", variable=self._footer_enabled).grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(12, 4)
-        )
-
-        row += 1
-        ctk.CTkLabel(tab, text="页脚内容:").grid(row=row, column=0, sticky="nw", padx=8, pady=4)
-        self._footer_text = ctk.CTkTextbox(tab, height=56, wrap="word")
-        self._footer_text.grid(row=row, column=1, sticky="ew", padx=8, pady=4)
-        self._footer_text.insert("1.0", self._settings.footer_text)
-
-        row += 1
-        ctk.CTkLabel(tab, text="页脚对齐:").grid(row=row, column=0, sticky="w", padx=8, pady=4)
-        self._footer_align = ctk.CTkSegmentedButton(tab, values=["左", "中", "右"])
-        self._footer_align.set({"left": "左", "center": "中", "right": "右"}.get(
-            self._settings.footer_align, "中"
-        ))
-        self._footer_align.grid(row=row, column=1, sticky="w", padx=8, pady=4)
-
-        row += 1
-        self._diff_first = ctk.BooleanVar(value=self._settings.different_first_page)
-        ctk.CTkCheckBox(tab, text="首页不同", variable=self._diff_first).grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(12, 4)
-        )
-
-        row += 1
-        ctk.CTkLabel(tab, text="首页页眉:").grid(row=row, column=0, sticky="nw", padx=8, pady=4)
-        self._first_header = ctk.CTkEntry(tab)
-        self._first_header.grid(row=row, column=1, sticky="ew", padx=8, pady=4)
-        self._first_header.insert(0, self._settings.first_header_text)
-
-        row += 1
-        ctk.CTkLabel(tab, text="首页页脚:").grid(row=row, column=0, sticky="nw", padx=8, pady=4)
-        self._first_footer = ctk.CTkEntry(tab)
-        self._first_footer.grid(row=row, column=1, sticky="ew", padx=8, pady=4)
-        self._first_footer.insert(0, self._settings.first_footer_text)
-
-        row += 1
-        ctk.CTkLabel(
-            tab,
-            text=PLACEHOLDER_HINT,
-            text_color=("gray40", "gray65"),
-            wraplength=480,
-            justify="left",
-            anchor="w",
-        ).grid(row=row, column=0, columnspan=2, sticky="ew", padx=8, pady=(12, 8))
-
-    def _build_properties_tab(self) -> None:
-        tab = self._tab_props
-        tab.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(tab, text="标题:").grid(row=0, column=0, sticky="w", padx=8, pady=(12, 4))
-        self._doc_title = ctk.CTkEntry(tab, placeholder_text="留空则使用首个一级标题或文件名")
-        self._doc_title.grid(row=0, column=1, sticky="ew", padx=8, pady=(12, 4))
-        self._doc_title.insert(0, self._settings.doc_title)
-
-        ctk.CTkLabel(tab, text="作者:").grid(row=1, column=0, sticky="w", padx=8, pady=4)
-        self._doc_author = ctk.CTkEntry(tab)
-        self._doc_author.grid(row=1, column=1, sticky="ew", padx=8, pady=4)
-        self._doc_author.insert(0, self._settings.doc_author)
-
-        ctk.CTkLabel(tab, text="主题:").grid(row=2, column=0, sticky="w", padx=8, pady=4)
-        self._doc_subject = ctk.CTkEntry(tab)
-        self._doc_subject.grid(row=2, column=1, sticky="ew", padx=8, pady=4)
-        self._doc_subject.insert(0, self._settings.doc_subject)
-
-        ctk.CTkLabel(
-            tab,
-            text="这些信息会写入 Word 文档属性，并可用于页眉/页脚占位符。",
-            text_color=("gray40", "gray65"),
-            wraplength=480,
-            justify="left",
-            anchor="w",
-        ).grid(row=3, column=0, columnspan=2, sticky="ew", padx=8, pady=(16, 8))
-
-    def _build_buttons(self) -> None:
-        bar = ctk.CTkFrame(self, fg_color="transparent")
-        bar.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 16))
-
-        ctk.CTkButton(bar, text="恢复默认", width=100, command=self._on_reset).pack(
-            side="left"
-        )
-        ctk.CTkButton(bar, text="取消", width=90, command=self._on_cancel).pack(
-            side="right", padx=(8, 0)
-        )
-        ctk.CTkButton(bar, text="保存", width=90, command=self._on_save).pack(side="right")
-
-    @staticmethod
-    def _align_value(label: str) -> str:
-        return {"左": "left", "中": "center", "右": "right"}.get(label, "center")
-
-    @staticmethod
-    def _format_value(label: str) -> str:
-        return "pdf" if "PDF" in label else "docx"
-
     def _collect(self) -> ExportSettings:
         try:
-            font_size = float(self._code_font_size.get().strip() or "9.5")
+            font_size = float(self.code_font_size.text().strip() or "9.5")
         except ValueError:
             font_size = 9.5
         settings = ExportSettings(
-            output_format=self._format_value(self._output_format.get()),
-            header_enabled=bool(self._header_enabled.get()),
-            header_text=self._header_text.get("1.0", "end").strip(),
-            header_align=self._align_value(self._header_align.get()),
-            footer_enabled=bool(self._footer_enabled.get()),
-            footer_text=self._footer_text.get("1.0", "end").strip(),
-            footer_align=self._align_value(self._footer_align.get()),
-            different_first_page=bool(self._diff_first.get()),
-            first_header_text=self._first_header.get().strip(),
-            first_footer_text=self._first_footer.get().strip(),
-            doc_title=self._doc_title.get().strip(),
-            doc_author=self._doc_author.get().strip(),
-            doc_subject=self._doc_subject.get().strip(),
-            style_preset=self._preset_key_from_label(self._style_preset.get()),
-            heading_color=self._heading_color.get().strip(),
-            heading_h1_color=self._heading_h1_color.get().strip(),
-            heading_h2_color=self._heading_h2_color.get().strip(),
-            heading_h3_color=self._heading_h3_color.get().strip(),
-            code_bg=self._code_bg.get().strip(),
-            code_border=self._code_border.get().strip(),
-            code_font=self._code_font.get().strip(),
+            output_format="pdf" if self.format_pdf.isChecked() else "docx",
+            header_enabled=self.header_enabled.isChecked(),
+            header_text=self.header_text.toPlainText().strip(),
+            header_align=str(self.header_align.currentData()),
+            footer_enabled=self.footer_enabled.isChecked(),
+            footer_text=self.footer_text.toPlainText().strip(),
+            footer_align=str(self.footer_align.currentData()),
+            different_first_page=self.diff_first.isChecked(),
+            first_header_text=self.first_header.text().strip(),
+            first_footer_text=self.first_footer.text().strip(),
+            doc_title=self.doc_title.text().strip(),
+            doc_author=self.doc_author.text().strip(),
+            doc_subject=self.doc_subject.text().strip(),
+            style_preset=str(self.style_preset.currentData() or "custom"),
+            heading_color=self.heading_color.text(),
+            heading_h1_color=self.heading_h1.text(),
+            heading_h2_color=self.heading_h2.text(),
+            heading_h3_color=self.heading_h3.text(),
+            code_bg=self.code_bg.text(),
+            code_border=self.code_border.text(),
+            code_font=self.code_font.text().strip(),
             code_font_size=font_size,
-            code_highlight=bool(self._code_highlight.get()),
-            code_show_language=bool(self._code_show_language.get()),
-            inline_code_bg=self._inline_code_bg.get().strip(),
-            inline_code_fg=self._inline_code_fg.get().strip(),
+            code_highlight=self.code_highlight.isChecked(),
+            code_show_language=self.code_show_language.isChecked(),
+            inline_code_bg=self.inline_code_bg.text(),
+            inline_code_fg=self.inline_code_fg.text(),
         )
         settings.normalize_style_fields()
         return settings
 
     def _apply_to_form(self, settings: ExportSettings) -> None:
         settings.normalize_style_fields()
-        self._output_format.set(settings.format_label())
-        self._on_format_preview(self._output_format.get())
-        self._header_enabled.set(settings.header_enabled)
-        self._header_text.delete("1.0", "end")
-        self._header_text.insert("1.0", settings.header_text)
-        self._header_align.set({"left": "左", "center": "中", "right": "右"}.get(
-            settings.header_align, "中"
-        ))
-        self._footer_enabled.set(settings.footer_enabled)
-        self._footer_text.delete("1.0", "end")
-        self._footer_text.insert("1.0", settings.footer_text)
-        self._footer_align.set({"left": "左", "center": "中", "right": "右"}.get(
-            settings.footer_align, "中"
-        ))
-        self._diff_first.set(settings.different_first_page)
-        self._first_header.delete(0, "end")
-        self._first_header.insert(0, settings.first_header_text)
-        self._first_footer.delete(0, "end")
-        self._first_footer.insert(0, settings.first_footer_text)
-        self._doc_title.delete(0, "end")
-        self._doc_title.insert(0, settings.doc_title)
-        self._doc_author.delete(0, "end")
-        self._doc_author.insert(0, settings.doc_author)
-        self._doc_subject.delete(0, "end")
-        self._doc_subject.insert(0, settings.doc_subject)
+        self.format_pdf.setChecked(settings.output_format == "pdf")
+        self.format_docx.setChecked(settings.output_format != "pdf")
+        self._update_format_hint()
+
+        self.header_enabled.setChecked(settings.header_enabled)
+        self.header_text.setPlainText(settings.header_text)
+        self.header_align.setCurrentIndex(max(0, self.header_align.findData(settings.header_align)))
+        self.footer_enabled.setChecked(settings.footer_enabled)
+        self.footer_text.setPlainText(settings.footer_text)
+        self.footer_align.setCurrentIndex(max(0, self.footer_align.findData(settings.footer_align)))
+        self.diff_first.setChecked(settings.different_first_page)
+        self.first_header.setText(settings.first_header_text)
+        self.first_footer.setText(settings.first_footer_text)
+        self.doc_title.setText(settings.doc_title)
+        self.doc_author.setText(settings.doc_author)
+        self.doc_subject.setText(settings.doc_subject)
 
         self._suppress_custom_mark = True
         try:
-            self._style_preset.set(
-                STYLE_PRESET_LABELS.get(settings.style_preset, STYLE_PRESET_LABELS["custom"])
-            )
-            self._heading_h1_color.delete(0, "end")
-            self._heading_h1_color.insert(0, settings.heading_h1_color)
-            self._heading_h2_color.delete(0, "end")
-            self._heading_h2_color.insert(0, settings.heading_h2_color)
-            self._heading_h3_color.delete(0, "end")
-            self._heading_h3_color.insert(0, settings.heading_h3_color)
-            self._heading_color.delete(0, "end")
-            self._heading_color.insert(0, settings.heading_color)
-            self._code_bg.delete(0, "end")
-            self._code_bg.insert(0, settings.code_bg)
-            self._code_border.delete(0, "end")
-            self._code_border.insert(0, settings.code_border)
-            self._code_font.delete(0, "end")
-            self._code_font.insert(0, settings.code_font)
-            self._code_font_size.delete(0, "end")
-            self._code_font_size.insert(0, str(settings.code_font_size))
-            self._code_highlight.set(settings.code_highlight)
-            self._code_show_language.set(settings.code_show_language)
-            self._inline_code_fg.delete(0, "end")
-            self._inline_code_fg.insert(0, settings.inline_code_fg)
-            self._inline_code_bg.delete(0, "end")
-            self._inline_code_bg.insert(0, settings.inline_code_bg)
-            for entry in (
-                self._heading_h1_color,
-                self._heading_h2_color,
-                self._heading_h3_color,
-                self._heading_color,
-                self._code_bg,
-                self._code_border,
-                self._inline_code_fg,
-                self._inline_code_bg,
-            ):
-                self._refresh_color_swatch(entry)
+            idx = self.style_preset.findData(settings.style_preset)
+            self.style_preset.setCurrentIndex(max(0, idx))
+            self.heading_h1.set_text(settings.heading_h1_color)
+            self.heading_h2.set_text(settings.heading_h2_color)
+            self.heading_h3.set_text(settings.heading_h3_color)
+            self.heading_color.set_text(settings.heading_color)
+            self.code_bg.set_text(settings.code_bg)
+            self.code_border.set_text(settings.code_border)
+            self.code_font.setText(settings.code_font)
+            self.code_font_size.setText(str(settings.code_font_size))
+            self.code_highlight.setChecked(settings.code_highlight)
+            self.code_show_language.setChecked(settings.code_show_language)
+            self.inline_code_fg.set_text(settings.inline_code_fg)
+            self.inline_code_bg.set_text(settings.inline_code_bg)
         finally:
             self._suppress_custom_mark = False
 
@@ -589,13 +436,7 @@ class ExportSettingsDialog(ctk.CTkToplevel):
         self._result = settings
         if self._on_saved:
             self._on_saved(settings)
-        self.grab_release()
-        self.destroy()
-
-    def _on_cancel(self) -> None:
-        self._result = None
-        self.grab_release()
-        self.destroy()
+        self.accept()
 
     @property
     def result(self) -> ExportSettings | None:
@@ -603,10 +444,12 @@ class ExportSettingsDialog(ctk.CTkToplevel):
 
 
 def open_export_settings_dialog(
-    master,
+    parent=None,
     *,
     settings: ExportSettings | None = None,
     on_saved: Callable[[ExportSettings], None] | None = None,
 ) -> ExportSettingsDialog:
-    """Open the export settings dialog (non-blocking; use on_saved for updates)."""
-    return ExportSettingsDialog(master, settings=settings, on_saved=on_saved)
+    """Open the export settings dialog and exec it modally."""
+    dialog = ExportSettingsDialog(parent, settings=settings, on_saved=on_saved)
+    dialog.exec()
+    return dialog
