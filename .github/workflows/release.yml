@@ -46,9 +46,11 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          heat dir "dist/toMarkdown" -cg AppFiles -dr INSTALLFOLDER -gg -srd -out "installer/HarvestedFiles.wxs"
-          candle -dVersion=$version -out "installer/" "installer/Product.wxs" "installer/HarvestedFiles.wxs"
-          $msiName = "toMarkdown-v$version-windows-x64.msi"
+          # WiX requires x.x.x.x; quote -dVersion so GHA does not eat $version
+          $wixVersion = if ($version -match '^\d+\.\d+\.\d+$') { "$version.0" } else { $version }
+          heat dir "dist/toMarkdown" -cg AppFiles -dr INSTALLFOLDER -gg -srd -sreg -out "installer/HarvestedFiles.wxs"
+          candle "-dVersion=$wixVersion" -out "installer/" "installer/Product.wxs" "installer/HarvestedFiles.wxs"
+          $msiName = "toMarkdown-v${version}-windows-x64.msi"
           light -out "dist/$msiName" "installer/Product.wixobj" "installer/HarvestedFiles.wixobj"
           "MSI_NAME=$msiName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
