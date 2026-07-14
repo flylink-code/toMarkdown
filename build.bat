@@ -64,9 +64,23 @@ if errorlevel 1 (
     exit /b 1
 )
 
+where makensis >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] NSIS was not found. Skipping installer build.
+) else (
+    echo [INFO] Creating NSIS installer...
+    makensis /DAPP_VERSION=%VERSION% installer\toMarkdown.nsi
+    if errorlevel 1 (
+        echo [ERROR] NSIS installer build failed.
+        pause
+        exit /b 1
+    )
+)
+
 echo.
 echo [OK] Build complete.
 echo      Executable: dist\toMarkdown\toMarkdown.exe
 echo      Archive:    %ARCHIVE%
+if exist "dist\toMarkdown-v%VERSION%-windows-x64-setup.exe" echo      Installer:  dist\toMarkdown-v%VERSION%-windows-x64-setup.exe
 echo.
 pause

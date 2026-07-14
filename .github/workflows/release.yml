@@ -28,8 +28,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Install WiX Toolset
-        run: choco install wixtoolset -y --no-progress
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
 
       - name: Build executable
         run: pyinstaller --noconfirm tomarkdown.spec
@@ -44,25 +44,16 @@ jobs:
           Compress-Archive -Path "dist/toMarkdown/*" -DestinationPath "dist/$($env:ARCHIVE_NAME)"
           "ARCHIVE_NAME=$($env:ARCHIVE_NAME)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Build MSI installer
+      - name: Build NSIS installer
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $env:PKG_VERSION = $env:RELEASE_TAG.Substring(1)
-          if (($env:PKG_VERSION.Split('.')).Count -eq 3) {
-            $env:WIX_VERSION = "$($env:PKG_VERSION).0"
-          } else {
-            $env:WIX_VERSION = $env:PKG_VERSION
-          }
-          heat dir "dist/toMarkdown" -cg AppFiles -dr INSTALLFOLDER -gg -srd -sreg -out "installer/HarvestedFiles.wxs"
+          & makensis "/DAPP_VERSION=$($env:PKG_VERSION)" "installer/toMarkdown.nsi"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & candle @("-dVersion=$($env:WIX_VERSION)", "-ext", "WixUIExtension", "-out", "installer/", "installer/Product.wxs", "installer/HarvestedFiles.wxs")
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:MSI_NAME = "toMarkdown-v$($env:PKG_VERSION)-windows-x64.msi"
-          & light -sval -ext WixUIExtension -b "dist/toMarkdown" -out "dist/$($env:MSI_NAME)" "installer/Product.wixobj" "installer/HarvestedFiles.wixobj"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          "MSI_NAME=$($env:MSI_NAME)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $env:INSTALLER_NAME = "toMarkdown-v$($env:PKG_VERSION)-windows-x64-setup.exe"
+          "INSTALLER_NAME=$($env:INSTALLER_NAME)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -71,6 +62,6 @@ jobs:
           generate_release_notes: true
           files: |
             dist/${{ env.ARCHIVE_NAME }}
-            dist/${{ env.MSI_NAME }}
+            dist/${{ env.INSTALLER_NAME }}
           draft: false
           prerelease: false

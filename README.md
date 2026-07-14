@@ -37,7 +37,7 @@ Download the latest release from **[GitHub Releases](https://github.com/flylink-
 | Package | Use |
 |---------|-----|
 | `toMarkdown-vX.X.X-windows-x64.zip` | Portable: extract and run `toMarkdown.exe` |
-| `toMarkdown-vX.X.X-windows-x64.msi` | Installer (Program Files) |
+| `toMarkdown-vX.X.X-windows-x64-setup.exe` | Installer (selectable directory, Start Menu and desktop shortcuts) |
 
 > **Notes:**
 > - Converting `.doc` files requires **Microsoft Word** or **LibreOffice**.
@@ -87,9 +87,11 @@ tomd ./notes -d from-md -f pdf -r
 pip install pyinstaller
 pyinstaller --noconfirm tomarkdown.spec
 # Output: dist/toMarkdown/toMarkdown.exe
+makensis /DAPP_VERSION=0.6.2 installer/toMarkdown.nsi
+# Output: dist/toMarkdown-v0.6.2-windows-x64-setup.exe
 ```
 
-Tagged releases (`v*`) are built by GitHub Actions (zip + MSI).
+Tagged releases (`v*`) are built by GitHub Actions (portable zip + NSIS installer).
 
 ### Development
 
@@ -127,7 +129,7 @@ pytest tests/
 | 包 | 用途 |
 |----|------|
 | `toMarkdown-vX.X.X-windows-x64.zip` | 绿色版：解压后运行 `toMarkdown.exe` |
-| `toMarkdown-vX.X.X-windows-x64.msi` | 安装包（安装到 Program Files） |
+| `toMarkdown-vX.X.X-windows-x64-setup.exe` | 安装包（可选安装目录、开始菜单和桌面快捷方式） |
 
 > **说明：**
 > - 转换 `.doc` 需要安装 **Microsoft Word** 或 **LibreOffice**。
@@ -180,7 +182,7 @@ toMarkdown/
 │   ├── theme.py             # 深色 / 浅色主题
 │   ├── updater.py           # 应用内更新
 │   └── cli.py               # 命令行
-├── installer/               # WiX MSI 安装脚本
+├── installer/               # NSIS 安装脚本与图标
 ├── tests/
 ├── main.py
 └── requirements.txt
@@ -203,7 +205,7 @@ pip install -e .
 pytest tests/
 ```
 
-推送 `v*` 标签后，GitHub Actions 会自动构建 zip 与 MSI 并发布 Release。
+推送 `v*` 标签后，GitHub Actions 会自动构建 zip 与 NSIS 安装程序并发布 Release。
 
 ---
 
