@@ -3,6 +3,7 @@ Unicode true
 !include "MUI2.nsh"
 
 !define PROJECT_ROOT "${__FILEDIR__}\.."
+!define INSTALLER_DIR "${__FILEDIR__}"
 
 !ifndef APP_VERSION
   !define APP_VERSION "0.6.2"
@@ -20,8 +21,8 @@ InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "${UNINSTALL_KEY}" "InstallLocation"
 RequestExecutionLevel admin
 
-Icon "${PROJECT_ROOT}\installer\toMarkdown.ico"
-UninstallIcon "${PROJECT_ROOT}\installer\toMarkdown.ico"
+Icon "${INSTALLER_DIR}\toMarkdown.ico"
+UninstallIcon "${INSTALLER_DIR}\toMarkdown.ico"
 SetCompressor /SOLID lzma
 SetShellVarContext all
 BrandingText "${APP_NAME}"
@@ -34,8 +35,8 @@ VIAddVersionKey "FileVersion" "${APP_VERSION}"
 VIAddVersionKey "LegalCopyright" "Copyright (c) ${APP_PUBLISHER}"
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "${PROJECT_ROOT}\installer\toMarkdown.ico"
-!define MUI_UNICON "${PROJECT_ROOT}\installer\toMarkdown.ico"
+!define MUI_ICON "${INSTALLER_DIR}\toMarkdown.ico"
+!define MUI_UNICON "${INSTALLER_DIR}\toMarkdown.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch ${APP_NAME}"
 
