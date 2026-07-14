@@ -21,7 +21,6 @@ RequestExecutionLevel admin
 Icon "toMarkdown.ico"
 UninstallIcon "toMarkdown.ico"
 SetCompressor /SOLID lzma
-SetShellVarContext all
 BrandingText "${APP_NAME}"
 
 VIProductVersion "${APP_VERSION}.0"
@@ -48,6 +47,14 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) ${APP_PUBLISHER}"
 
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+
+Function .onInit
+  SetShellVarContext all
+FunctionEnd
+
+Function un.onInit
+  SetShellVarContext all
+FunctionEnd
 
 Section "${APP_NAME} application" SecApplication
   SectionIn RO
