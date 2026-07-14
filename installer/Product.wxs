@@ -4,6 +4,7 @@
       Id="*"
       Name="toMarkdown"
       Language="2052"
+      Codepage="936"
       Version="$(var.Version)"
       Manufacturer="flylink-code"
       UpgradeCode="{9B9A9A21-409A-4842-9D9F-8BD55E5D5B7A}">
