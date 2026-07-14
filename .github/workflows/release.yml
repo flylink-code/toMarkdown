@@ -57,10 +57,10 @@ jobs:
           }
           heat dir "dist/toMarkdown" -cg AppFiles -dr INSTALLFOLDER -gg -srd -sreg -out "installer/HarvestedFiles.wxs"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & candle @("-dVersion=$($env:WIX_VERSION)", "-out", "installer/", "installer/Product.wxs", "installer/HarvestedFiles.wxs")
+          & candle @("-dVersion=$($env:WIX_VERSION)", "-ext", "WixUIExtension", "-out", "installer/", "installer/Product.wxs", "installer/HarvestedFiles.wxs")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:MSI_NAME = "toMarkdown-v$($env:PKG_VERSION)-windows-x64.msi"
-          & light -sval -b "dist/toMarkdown" -out "dist/$($env:MSI_NAME)" "installer/Product.wixobj" "installer/HarvestedFiles.wixobj"
+          & light -sval -ext WixUIExtension -b "dist/toMarkdown" -out "dist/$($env:MSI_NAME)" "installer/Product.wixobj" "installer/HarvestedFiles.wixobj"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "MSI_NAME=$($env:MSI_NAME)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 

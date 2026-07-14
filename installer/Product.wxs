@@ -11,14 +11,76 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of toMarkdown is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
+    <Icon Id="toMarkdownIcon" SourceFile="$(sys.SOURCEFILEDIR)\toMarkdown.ico" />
+    <Property Id="ARPPRODUCTICON" Value="toMarkdownIcon" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <UI>
+      <UIRef Id="WixUI_InstallDir" />
+    </UI>
+
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFilesFolder">
         <Directory Id="INSTALLFOLDER" Name="toMarkdown" />
       </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="toMarkdown" />
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
     </Directory>
 
     <Feature Id="MainFeature" Title="toMarkdown" Level="1">
       <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="DesktopShortcutComponent" />
     </Feature>
   </Product>
+
+  <Fragment>
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component
+          Id="StartMenuShortcutComponent"
+          Guid="{7BE7D5A5-7B04-4A51-A4B2-3B6558C0A5DB}">
+        <Shortcut
+            Id="StartMenuShortcut"
+            Name="toMarkdown"
+            Description="toMarkdown 文档与 Markdown 转换器"
+            Target="[INSTALLFOLDER]toMarkdown.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="toMarkdownIcon"
+            IconIndex="0"
+            Advertise="no" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+            Root="HKLM"
+            Key="Software\flylink-code\toMarkdown"
+            Name="StartMenuShortcut"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="DesktopFolder">
+      <Component
+          Id="DesktopShortcutComponent"
+          Guid="{D5AE456D-9C64-4BD4-8F79-EF24AF3B6BF6}">
+        <Shortcut
+            Id="DesktopShortcut"
+            Name="toMarkdown"
+            Description="toMarkdown 文档与 Markdown 转换器"
+            Target="[INSTALLFOLDER]toMarkdown.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="toMarkdownIcon"
+            IconIndex="0"
+            Advertise="no" />
+        <RegistryValue
+            Root="HKLM"
+            Key="Software\flylink-code\toMarkdown"
+            Name="DesktopShortcut"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
 </Wix>
