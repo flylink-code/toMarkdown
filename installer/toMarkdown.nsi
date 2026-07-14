@@ -2,9 +2,6 @@ Unicode true
 
 !include "MUI2.nsh"
 
-!define PROJECT_ROOT "${__FILEDIR__}\.."
-!define INSTALLER_DIR "${__FILEDIR__}"
-
 !ifndef APP_VERSION
   !define APP_VERSION "0.6.2"
 !endif
@@ -16,13 +13,13 @@ Unicode true
 
 Name "${APP_NAME}"
 Caption "${APP_NAME} ${APP_VERSION} Setup"
-OutFile "${PROJECT_ROOT}\dist\toMarkdown-v${APP_VERSION}-windows-x64-setup.exe"
+OutFile "..\dist\toMarkdown-v${APP_VERSION}-windows-x64-setup.exe"
 InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "${UNINSTALL_KEY}" "InstallLocation"
 RequestExecutionLevel admin
 
-Icon "${INSTALLER_DIR}\toMarkdown.ico"
-UninstallIcon "${INSTALLER_DIR}\toMarkdown.ico"
+Icon "toMarkdown.ico"
+UninstallIcon "toMarkdown.ico"
 SetCompressor /SOLID lzma
 SetShellVarContext all
 BrandingText "${APP_NAME}"
@@ -35,8 +32,8 @@ VIAddVersionKey "FileVersion" "${APP_VERSION}"
 VIAddVersionKey "LegalCopyright" "Copyright (c) ${APP_PUBLISHER}"
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "${INSTALLER_DIR}\toMarkdown.ico"
-!define MUI_UNICON "${INSTALLER_DIR}\toMarkdown.ico"
+!define MUI_ICON "toMarkdown.ico"
+!define MUI_UNICON "toMarkdown.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch ${APP_NAME}"
 
@@ -55,7 +52,7 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) ${APP_PUBLISHER}"
 Section "${APP_NAME} application" SecApplication
   SectionIn RO
   SetOutPath "$INSTDIR"
-  File /r "${PROJECT_ROOT}\dist\toMarkdown\*"
+  File /r "..\dist\toMarkdown\*"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "${APP_NAME}"
