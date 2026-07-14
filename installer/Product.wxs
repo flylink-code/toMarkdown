@@ -44,7 +44,7 @@
         <Shortcut
             Id="StartMenuShortcut"
             Name="toMarkdown"
-            Description="toMarkdown 文档与 Markdown 转换器"
+            Description="toMarkdown document and Markdown converter"
             Target="[INSTALLFOLDER]toMarkdown.exe"
             WorkingDirectory="INSTALLFOLDER"
             Icon="toMarkdownIcon"
@@ -68,7 +68,7 @@
         <Shortcut
             Id="DesktopShortcut"
             Name="toMarkdown"
-            Description="toMarkdown 文档与 Markdown 转换器"
+            Description="toMarkdown document and Markdown converter"
             Target="[INSTALLFOLDER]toMarkdown.exe"
             WorkingDirectory="INSTALLFOLDER"
             Icon="toMarkdownIcon"
