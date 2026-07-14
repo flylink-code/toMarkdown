@@ -50,7 +50,15 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $env:PKG_VERSION = $env:RELEASE_TAG.Substring(1)
-          & makensis "/DAPP_VERSION=$($env:PKG_VERSION)" "installer/toMarkdown.nsi"
+          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+          if (-not $makensis) {
+            $makensis = Join-Path ${env:ProgramFiles(x86)} "NSIS\makensis.exe"
+          }
+          if (-not (Test-Path $makensis)) {
+            Write-Error "NSIS compiler not found"
+            exit 1
+          }
+          & $makensis "/DAPP_VERSION=$($env:PKG_VERSION)" "installer/toMarkdown.nsi"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:INSTALLER_NAME = "toMarkdown-v$($env:PKG_VERSION)-windows-x64-setup.exe"
           "INSTALLER_NAME=$($env:INSTALLER_NAME)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
