@@ -1,6 +1,6 @@
 # AGENTS.md
 
-toMarkdown：Windows 桌面工具，Word / PDF ↔ Markdown 双向批量转换（Python 3.10+，PySide6 GUI + CLI）。当前版本 `0.6.2`（单一来源：`tomarkdown/__init__.py` 的 `__version__`，需与 `pyproject.toml` 同步）。
+toMarkdown：Windows 桌面工具，Word / PDF ↔ Markdown 双向批量转换（Python 3.10+，PySide6 GUI + CLI）。当前版本 `0.6.3`（单一来源：`tomarkdown/__init__.py` 的 `__version__`，需与 `pyproject.toml` 同步）。
 
 先读 [doc/code-graph.md](doc/code-graph.md)（模块依赖、调用链、符号索引、测试映射），再定点读源码，避免全仓扫描。
 

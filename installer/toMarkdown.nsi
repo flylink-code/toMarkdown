@@ -3,7 +3,7 @@ Unicode true
 !include "MUI2.nsh"
 
 !ifndef APP_VERSION
-  !define APP_VERSION "0.6.2"
+  !define APP_VERSION "0.6.3"
 !endif
 
 !define APP_NAME "toMarkdown"

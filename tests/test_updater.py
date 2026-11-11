@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
-from tomarkdown.updater import UpdateError, is_newer_version, parse_release
+from tomarkdown.updater import UpdateError, is_installed_build, is_newer_version, parse_release
 
 
 def test_is_newer_version_pads_missing_parts() -> None:
@@ -30,6 +32,51 @@ def test_parse_release_returns_matching_windows_archive() -> None:
     )
     assert release is not None
     assert release.version == "0.5.0"
+
+
+def test_parse_release_returns_installer_url_separately() -> None:
+    release = parse_release(
+        {
+            "tag_name": "v0.6.3",
+            "assets": [
+                {"name": "toMarkdown-v0.6.3-windows-x64-setup.exe", "browser_download_url": "https://example.com/setup.exe"},
+                {"name": "toMarkdown-v0.6.3-windows-x64.zip", "browser_download_url": "https://example.com/app.zip"},
+            ],
+        },
+        current="0.6.2",
+    )
+    assert release is not None
+    assert release.download_url == "https://example.com/app.zip"
+    assert release.installer_url == "https://example.com/setup.exe"
+
+
+def test_parse_release_without_installer_has_empty_installer_url() -> None:
+    release = parse_release(
+        {
+            "tag_name": "v0.6.3",
+            "assets": [{"name": "toMarkdown-v0.6.3-windows-x64.zip", "browser_download_url": "https://example.com/app.zip"}],
+        },
+        current="0.6.2",
+    )
+    assert release is not None
+    assert release.installer_url == ""
+
+
+def test_is_installed_build_detects_uninstaller(tmp_path, monkeypatch) -> None:
+    exe = tmp_path / "toMarkdown.exe"
+    exe.write_bytes(b"")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    assert not is_installed_build()
+    (tmp_path / "Uninstall.exe").write_bytes(b"")
+    assert is_installed_build()
+
+
+def test_is_installed_build_false_when_not_frozen(tmp_path, monkeypatch) -> None:
+    (tmp_path / "Uninstall.exe").write_bytes(b"")
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python.exe"))
+    assert not is_installed_build()
 
 
 def test_parse_release_ignores_current_or_unsupported_release() -> None:

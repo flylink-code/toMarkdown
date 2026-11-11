@@ -19,6 +19,8 @@ from tomarkdown import __version__
 GITHUB_REPOSITORY = "flylink-code/toMarkdown"
 GITHUB_LATEST_RELEASE_URL = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 WINDOWS_ARCHIVE_SUFFIX = "-windows-x64.zip"
+WINDOWS_INSTALLER_SUFFIX = "-windows-x64-setup.exe"
+UNINSTALLER_NAME = "Uninstall.exe"
 
 
 class UpdateError(RuntimeError):
@@ -27,11 +29,12 @@ class UpdateError(RuntimeError):
 
 @dataclass(frozen=True)
 class ReleaseInfo:
-    """The installable Windows archive from a GitHub release."""
+    """The installable Windows assets from a GitHub release."""
 
     version: str
     download_url: str
     release_url: str
+    installer_url: str = ""
 
 
 def _version_key(version: str) -> tuple[int, ...]:
@@ -60,14 +63,29 @@ def parse_release(payload: dict[str, object], current: str = __version__) -> Rel
     assets = payload.get("assets", [])
     if not isinstance(assets, list):
         raise UpdateError("GitHub release assets are invalid.")
+    archive_url = ""
+    installer_url = ""
     for asset in assets:
         if not isinstance(asset, dict):
             continue
         name = str(asset.get("name", ""))
-        download_url = str(asset.get("browser_download_url", ""))
-        if name.endswith(WINDOWS_ARCHIVE_SUFFIX) and download_url.startswith("https://"):
-            return ReleaseInfo(version, download_url, str(payload.get("html_url", "")))
-    return None
+        url = str(asset.get("browser_download_url", ""))
+        if not url.startswith("https://"):
+            continue
+        if name.endswith(WINDOWS_ARCHIVE_SUFFIX):
+            archive_url = archive_url or url
+        elif name.endswith(WINDOWS_INSTALLER_SUFFIX):
+            installer_url = installer_url or url
+    if not archive_url:
+        return None
+    return ReleaseInfo(version, archive_url, str(payload.get("html_url", "")), installer_url)
+
+
+def is_installed_build() -> bool:
+    """Whether the running app was set up by the NSIS installer (not a portable copy)."""
+    if not getattr(sys, "frozen", False):
+        return False
+    return (Path(sys.executable).resolve().parent / UNINSTALLER_NAME).is_file()
 
 
 def check_for_update(current: str = __version__, opener: Callable[..., object] = urllib.request.urlopen) -> ReleaseInfo | None:
@@ -104,22 +122,68 @@ def _extract_archive(archive: Path, destination: Path) -> Path:
     return executable
 
 
+def _download(url: str, destination: Path) -> None:
+    """Stream url into destination."""
+    request = urllib.request.Request(url, headers={"User-Agent": "toMarkdown-updater"})
+    with urllib.request.urlopen(request, timeout=30) as response, destination.open("wb") as output:
+        while chunk := response.read(1024 * 1024):
+            output.write(chunk)
+
+
+def _run_detached(script: Path) -> None:
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+    subprocess.Popen(["cmd.exe", "/c", str(script)], creationflags=flags)
+
+
+def _install_with_setup(release: ReleaseInfo, executable: Path) -> None:
+    """Run the NSIS installer silently after the app exits (UAC elevates it)."""
+    if not release.installer_url:
+        raise UpdateError(
+            "This release has no installer package. Please download it manually from "
+            f"{release.release_url or 'the GitHub releases page'}."
+        )
+    work_dir = Path(tempfile.mkdtemp(prefix="toMarkdown-update-"))
+    setup = work_dir / "setup.exe"
+    try:
+        _download(release.installer_url, setup)
+        if setup.stat().st_size == 0:
+            raise UpdateError("Downloaded installer is empty.")
+    except (OSError, UpdateError) as exc:
+        raise UpdateError(f"Unable to download update: {exc}") from exc
+
+    pid = os.getpid()
+    script = work_dir / "install-update.cmd"
+    # `start /wait` goes through ShellExecute, so the installer's admin manifest triggers UAC.
+    script.write_text(
+        "@echo off\r\n"
+        ":wait\r\n"
+        f'tasklist /fi "PID eq {pid}" /fi "IMAGENAME eq {executable.name}" /nh | find /i "{executable.name}" >nul\r\n'
+        "if not errorlevel 1 (\r\n  timeout /t 1 /nobreak >nul\r\n  goto wait\r\n)\r\n"
+        f'start "" /wait "{setup}" /S\r\n'
+        f'start "" "{executable}"\r\n'
+        f'rmdir /s /q "{work_dir}"\r\n',
+        encoding="utf-8",
+    )
+    _run_detached(script)
+
+
 def download_and_install(release: ReleaseInfo) -> None:
     """Download an update and schedule replacement after the app exits."""
     if not getattr(sys, "frozen", False) or sys.platform != "win32":
         raise UpdateError("Automatic installation is available only in the Windows release app.")
 
     executable = Path(sys.executable).resolve()
+    if is_installed_build():
+        _install_with_setup(release, executable)
+        return
+
     install_dir = executable.parent
     work_dir = Path(tempfile.mkdtemp(prefix="toMarkdown-update-"))
     archive = work_dir / "update.zip"
     staging_dir = work_dir / "files"
     staging_dir.mkdir()
     try:
-        request = urllib.request.Request(release.download_url, headers={"User-Agent": "toMarkdown-updater"})
-        with urllib.request.urlopen(request, timeout=30) as response, archive.open("wb") as output:
-            while chunk := response.read(1024 * 1024):
-                output.write(chunk)
+        _download(release.download_url, archive)
         _extract_archive(archive, staging_dir)
     except (OSError, UpdateError) as exc:
         raise UpdateError(f"Unable to download update: {exc}") from exc
@@ -131,6 +195,5 @@ def download_and_install(release: ReleaseInfo) -> None:
         + f'start "" "{executable}"\r\nrmdir /s /q "{work_dir}"\r\n',
         encoding="utf-8",
     )
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
-    subprocess.Popen(["cmd.exe", "/c", str(script)], creationflags=flags)
+    _run_detached(script)
 

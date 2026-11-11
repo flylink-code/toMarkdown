@@ -87,8 +87,8 @@ tomd ./notes -d from-md -f pdf -r
 pip install pyinstaller
 pyinstaller --noconfirm tomarkdown.spec
 # Output: dist/toMarkdown/toMarkdown.exe
-makensis /DAPP_VERSION=0.6.2 installer/toMarkdown.nsi
-# Output: dist/toMarkdown-v0.6.2-windows-x64-setup.exe
+makensis /DAPP_VERSION=0.6.3 installer/toMarkdown.nsi
+# Output: dist/toMarkdown-v0.6.3-windows-x64-setup.exe
 ```
 
 Tagged releases (`v*`) are built by GitHub Actions (portable zip + NSIS installer).
@@ -119,7 +119,7 @@ pytest tests/
 - **拖放文件** — Qt 原生拖放，直接将文件或文件夹拖入窗口
 - **递归扫描** — 可选包含子目录
 - **深色 / 浅色主题** — 一键切换
-- **应用内更新** — 检查 GitHub Releases 并安装新版本
+- **应用内更新** — 检查 GitHub Releases；安装版下载 setup.exe 并静默升级（会弹出 UAC），便携版覆盖自身目录
 - **进度与日志** — 实时进度条及每个文件的结果
 
 ### 下载（Windows 版）

@@ -96,7 +96,7 @@ flowchart LR
 | [md_export.py](../tomarkdown/md_export.py) | `markdown_to_docx`、`convert_md_to_docx`、`convert_md_to_pdf`、`_render_table`、`_add_code_block`、`_apply_export_settings` |
 | [export_settings.py](../tomarkdown/export_settings.py) | `ExportSettings`、`load_export_settings`、`save_export_settings`、`build_placeholder_context` |
 | [settings_dialog.py](../tomarkdown/settings_dialog.py) | `ExportSettingsDialog`、`ColorField`、`open_export_settings_dialog` |
-| [updater.py](../tomarkdown/updater.py) | `ReleaseInfo`、`check_for_update`、`download_and_install`、`is_newer_version` |
+| [updater.py](../tomarkdown/updater.py) | `ReleaseInfo`、`check_for_update`、`download_and_install`、`is_newer_version`、`is_installed_build` |
 
 ## 5. GUI 线程模型
 
